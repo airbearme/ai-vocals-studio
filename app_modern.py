@@ -288,15 +288,32 @@ class ModernApp:
         header_frame = ModernFrame(self.root, bg='#1a1a1a', relief='flat', bd=0)
         header_frame.pack(fill='x', pady=10)
         
-        title_label = tk.Label(header_frame, text="🎤 AI VOCALS STUDIO", 
+        # Logo and title row
+        title_row = tk.Frame(header_frame, bg='#1a1a1a')
+        title_row.pack()
+        
+        # App logo (using emoji as placeholder for now)
+        logo_label = tk.Label(title_row, text="🎤", 
+                           font=('Segoe UI', 28, 'bold'), 
+                           fg='#00ff88', bg='#1a1a1a')
+        logo_label.pack(side='left', padx=(0, 10))
+        
+        # App title
+        title_label = tk.Label(title_row, text="AI VOCALS STUDIO", 
                               font=('Segoe UI', 24, 'bold'), 
                               fg='#00ff88', bg='#1a1a1a')
-        title_label.pack()
+        title_label.pack(side='left')
         
         subtitle = tk.Label(header_frame, text="Advanced Voice Cloning & Generation", 
                            font=('Segoe UI', 12), 
                            fg='#888888', bg='#1a1a1a')
-        subtitle.pack()
+        subtitle.pack(pady=(5,0))
+        
+        # Creator branding
+        creator_label = tk.Label(header_frame, text="Created by Steve B aka coden809", 
+                             font=('Segoe UI', 9, 'italic'), 
+                             fg='#666666', bg='#1a1a1a')
+        creator_label.pack(pady=(2,0))
         
     def create_main_content(self):
         main_container = ModernFrame(self.root)
@@ -1039,74 +1056,74 @@ class ModernApp:
             self.progress.update_progress(15, "🎵 Converting to audio format...", 
                                      suggestion="Making sure your audio is in the right format for AI processing")
 
-        if self.audio_path.get():
-            self.progress.update_progress(25, "🎵 Separating vocals from audio...", 
-                                     suggestion="Extracting clean vocals from your audio file")
-            separated = separate.separate_file(self.audio_path.get(), outdir=OUT, model="demucs", splits=False)
-            vocal_file = next((f for f in separated if "vocals" in f.lower()), None)
-            if vocal_file is None:
-                self.progress.update_progress(0, "❌ No vocals detected!", 
-                                         suggestion="Try using a clearer audio file with vocals")
-                messagebox.showerror("❌ Error","No vocals detected.")
-                self.progress.close_progress()
-                return
-        else:
-            text = self.textbox.get("1.0", "end").strip()
-            if not text:
-                self.progress.update_progress(0, "❌ No input provided!", 
-                                         suggestion="Enter some text or select an audio file")
-                messagebox.showerror("❌ Error","Provide text or audio input.")
-                self.progress.close_progress()
-                return
+            if self.audio_path.get():
+                self.progress.update_progress(25, "🎵 Separating vocals from audio...", 
+                                         suggestion="Extracting clean vocals from your audio file")
+                separated = separate.separate_file(self.audio_path.get(), outdir=OUT, model="demucs", splits=False)
+                vocal_file = next((f for f in separated if "vocals" in f.lower()), None)
+                if vocal_file is None:
+                    self.progress.update_progress(0, "❌ No vocals detected!", 
+                                             suggestion="Try using a clearer audio file with vocals")
+                    messagebox.showerror("❌ Error","No vocals detected.")
+                    self.progress.close_progress()
+                    return
+            else:
+                text = self.textbox.get("1.0", "end").strip()
+                if not text:
+                    self.progress.update_progress(0, "❌ No input provided!", 
+                                             suggestion="Enter some text or select an audio file")
+                    messagebox.showerror("❌ Error","Provide text or audio input.")
+                    self.progress.close_progress()
+                    return
+                    
+                self.progress.update_progress(30, "🗣️ Generating speech from text...", 
+                                         suggestion="Converting your text to speech using advanced TTS")
+                temp_file = os.path.join(OUT, f"{name}_temp.mp3")
+                text_to_speech(text, temp_file)
+                wav_file = temp_file.replace('.mp3', '.wav')
+                audio = AudioSegment.from_mp3(temp_file)
+                audio.export(wav_file, format="wav")
+                vocal_file = wav_file
                 
-            self.progress.update_progress(30, "🗣️ Generating speech from text...", 
-                                     suggestion="Converting your text to speech using advanced TTS")
-            temp_file = os.path.join(OUT, f"{name}_temp.mp3")
-            text_to_speech(text, temp_file)
-            wav_file = temp_file.replace('.mp3', '.wav')
-            audio = AudioSegment.from_mp3(temp_file)
-            audio.export(wav_file, format="wav")
-            vocal_file = wav_file
-            
-            if self.flow_align.get():
-                self.progress.update_progress(40, "🎯 Enhancing prosody and flow...", 
-                                         suggestion="Improving rhythm and timing for better vocal quality")
-                y, sr = librosa.load(vocal_file, sr=None)
-                y = self.enhance_prosody(y, sr)
-                sf.write(vocal_file, y, sr)
+                if self.flow_align.get():
+                    self.progress.update_progress(40, "🎯 Enhancing prosody and flow...", 
+                                             suggestion="Improving rhythm and timing for better vocal quality")
+                    y, sr = librosa.load(vocal_file, sr=None)
+                    y = self.enhance_prosody(y, sr)
+                    sf.write(vocal_file, y, sr)
 
-        self.progress.update_progress(60, "🤖 Running AI voice generation...", 
-                                 suggestion="This is where the magic happens! AI is creating your custom vocals")
-        
-        # Run inference
-        svc.infer(vocal_file, outwav, f0_method="pm")
-        
-        self.progress.update_progress(85, "💾 Saving final output...", 
-                                 suggestion="Almost done! Saving your generated vocals")
-        
-        # Convert to MP3 if requested
-        if output_format == "mp3":
-            audio = AudioSegment.from_wav(outwav)
-            audio.export(outfile, format="mp3")
-            os.remove(outwav)
-        
-        self.progress.update_progress(100, f"✅ Vocals generated successfully!", 
-                                 suggestion=f"Your vocals are saved as '{os.path.basename(outfile)}'. Click below to open the folder!")
-        
-        messagebox.showinfo("🎉 Success", f"Vocals generated!\n\nOutput: {outfile}")
-        
-        # Auto-close after 3 seconds
-        self.root.after(3000, self.progress.close_progress)
-        
-        # Ask if user wants to open the output folder
-        if messagebox.askyesno("📂 Open Output Folder?", "Open the output folder to listen to your vocals?"):
-            os.system(f"xdg-open {OUT}")
+            self.progress.update_progress(60, "🤖 Running AI voice generation...", 
+                                     suggestion="This is where the magic happens! AI is creating your custom vocals")
             
-    except Exception as e:
-        self.progress.update_progress(0, f"❌ Generation failed: {str(e)[:50]}...", 
-                                 suggestion="Check your model and input files, then try again")
-        self.progress.close_progress()
-        messagebox.showerror("❌ Error", str(e))
+            # Run inference
+            svc.infer(vocal_file, outwav, f0_method="pm")
+            
+            self.progress.update_progress(85, "💾 Saving final output...", 
+                                     suggestion="Almost done! Saving your generated vocals")
+            
+            # Convert to MP3 if requested
+            if output_format == "mp3":
+                audio = AudioSegment.from_wav(outwav)
+                audio.export(outfile, format="mp3")
+                os.remove(outwav)
+            
+            self.progress.update_progress(100, f"✅ Vocals generated successfully!", 
+                                     suggestion=f"Your vocals are saved as '{os.path.basename(outfile)}'. Click below to open the folder!")
+            
+            messagebox.showinfo("🎉 Success", f"Vocals generated!\n\nOutput: {outfile}")
+            
+            # Auto-close after 3 seconds
+            self.root.after(3000, self.progress.close_progress)
+            
+            # Ask if user wants to open the output folder
+            if messagebox.askyesno("📂 Open Output Folder?", "Open the output folder to listen to your vocals?"):
+                os.system(f"xdg-open {OUT}")
+                
+        except Exception as e:
+            self.progress.update_progress(0, f"❌ Generation failed: {str(e)[:50]}...", 
+                                     suggestion="Check your model and input files, then try again")
+            self.progress.close_progress()
+            messagebox.showerror("❌ Error", str(e))
 
 if __name__ == "__main__":
     root = tk.Tk()
