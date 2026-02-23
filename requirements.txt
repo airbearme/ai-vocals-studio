@@ -1,0 +1,7 @@
+gtts>=2.3.0
+demucs>=3.0.0
+so-vits-svc-fork>=4.0.0
+librosa>=0.9.0
+numpy>=1.21.0
+soundfile>=0.10.0
+pydub>=0.25.0
