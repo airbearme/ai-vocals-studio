@@ -428,15 +428,15 @@ class ModernApp:
         generate_btn.pack(pady=20)
         
     def create_models_tab(self, notebook):
-    models_frame = ModernFrame(notebook)
-    notebook.add(models_frame, text='🤖 Models')
+        models_frame = ModernFrame(notebook)
+        notebook.add(models_frame, text='🤖 Models')
         
-    # Model Loading Section
-    load_frame = ModernFrame(models_frame)
-    load_frame.pack(fill='x', padx=10, pady=10)
+        # Model Loading Section
+        load_frame = ModernFrame(models_frame)
+        load_frame.pack(fill='x', padx=10, pady=10)
         
     tk.Label(load_frame, text="🤖 LOAD VOICE MODEL", font=('Segoe UI', 14, 'bold'), 
-            fg='#00ff88', bg='#2b2b2b').pack(anchor='w')
+                fg='#00ff88', bg='#2b2b2b').pack(anchor='w')
         
     # Model selection
     model_frame = tk.Frame(load_frame, bg='#2b2b2b')
@@ -465,9 +465,46 @@ class ModernApp:
                            fg='#888888', bg='#2b2b2b')
     self.model_info.pack(anchor='w', pady=5)
         
-def create_training_tab(self, notebook):
-    train_frame = ModernFrame(notebook)
-    notebook.add(train_frame, text='📚 Training Data')
+    def create_training_tab(self, notebook):
+        train_frame = ModernFrame(notebook)
+        notebook.add(train_frame, text='📚 Training Data')
+        
+        # Training Data Section
+        data_frame = ModernFrame(train_frame)
+        data_frame.pack(fill='x', padx=10, pady=10)
+        
+        tk.Label(data_frame, text="📂 TRAINING DATA MANAGEMENT", font=('Segoe UI', 14, 'bold'), 
+                fg='#00ff88', bg='#2b2b2b').pack(anchor='w')
+        
+        # Import Buttons
+        btn_frame = tk.Frame(data_frame, bg='#2b2b2b')
+        btn_frame.pack(fill='x', pady=10)
+        
+        single_btn = ModernButton(btn_frame, text="📁 Import Single File", 
+                                command=self.import_single_clip,
+                                bg='#4a90e2', fg='white')
+        single_btn.pack(side='left', padx=5)
+        
+        folder_btn = ModernButton(btn_frame, text="📁 Import Entire Folder", 
+                                 command=self.import_folder,
+                                 bg='#27ae60', fg='white')
+        folder_btn.pack(side='left', padx=5)
+        
+        open_btn = ModernButton(btn_frame, text="📂 Open Data Folder", 
+                              command=self.open_data_folder,
+                              bg='#f39c12', fg='white')
+        open_btn.pack(side='left', padx=5)
+        
+        # Data Count
+        self.data_count = tk.Label(data_frame, text="Training clips: 0", 
+                                  font=('Segoe UI', 12, 'bold'), 
+                                  fg='#3498db', bg='#2b2b2b')
+        self.data_count.pack(anchor='w', pady=5)
+        
+        # Voice Cloning Section
+        clone_frame = ModernFrame(train_frame)
+        clone_frame.pack(fill='x', padx=10, pady=10)
+        
         tk.Label(clone_frame, text="🎤 VOICE CLONING", font=('Segoe UI', 14, 'bold'), 
                 fg='#e74c3c', bg='#2b2b2b').pack(anchor='w')
         
@@ -706,8 +743,7 @@ def create_training_tab(self, notebook):
             ("FLAC Files", "*.flac"),
             ("All Files", "*.*")
         ]
-    )
-    
+        
     if file_path:
         self.update_operation_progress("📁 Copying audio file...", 50, "Copying to dataset folder")
         
@@ -723,7 +759,7 @@ def create_training_tab(self, notebook):
             counter += 1
         
         shutil.copy2(file_path, dest)
-            messagebox.showwarning("⚠️ No Files Found", "No audio files found in the selected folder.")
+        self.refresh_data_count()
             
     def open_data_folder(self):
         os.system(f"xdg-open {DATA}")
