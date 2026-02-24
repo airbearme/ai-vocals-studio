@@ -1,0 +1,38 @@
+{
+  "model_name": "2pac_enhanced_voice",
+  "speaker": "2Pac",
+  "type": "enhanced_voice_clone",
+  "created": "2026-02-23",
+  "characteristics": {
+    "speaker": "2Pac",
+    "total_files": 13,
+    "voice_profile": {
+      "pitch_category": "low",
+      "voice_type": "bass",
+      "timbre": "clear",
+      "resonance": "moderate"
+    },
+    "speaking_style": {
+      "pace": "slow",
+      "rhythm": "monotone",
+      "articulation": "clear",
+      "emphasis": "moderate"
+    },
+    "persona_traits": {
+      "confidence": "moderate",
+      "emotionality": "balanced",
+      "intensity": "moderate",
+      "expressiveness": "natural"
+    },
+    "audio_features": {}
+  },
+  "training_files": 13,
+  "enhancement_features": [
+    "voice_pitch_capture",
+    "tone_analysis",
+    "flow_pattern_learning",
+    "persona_modeling",
+    "speech_style_replication",
+    "emotional_expression"
+  ]
+}

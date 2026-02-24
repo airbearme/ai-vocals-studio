@@ -1,0 +1,10 @@
+{
+  "2pac_custom_voice": {
+    "name": "2Pac Custom Voice",
+    "description": "Custom trained model using 2Pac audio files",
+    "speaker": "2Pac",
+    "type": "custom_trained",
+    "path": "models/2pac_custom_voice/model.pth",
+    "created": "2026-02-23"
+  }
+}

@@ -207,24 +207,38 @@ class ProgressManager:
 class ModernApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("🎤 AI Vocals Studio - Modern Edition")
-        self.root.geometry("900x800")
+        self.root.title("🎤 AI Vocals Studio - Created by Steve B aka coden809")
+        self.root.geometry("1200x800")
         self.root.configure(bg='#1a1a1a')
         
         # Initialize progress manager
         self.progress = ProgressManager(root)
         
-        self.setup_styles()
+        # Variables
+        self.audio_path = tk.StringVar()
+        self.outname = tk.StringVar()
+        self.output_format = tk.StringVar(value="wav")
+        self.textbox = None
+        self.speaker_name_var = tk.StringVar()
+        self.model_name_var = tk.StringVar()
+        self.download_var = tk.StringVar()
+        self.model_var = tk.StringVar()
+        
+        # Progress tracking variables
+        self.current_operation = tk.StringVar(value="Ready")
+        self.operation_progress = tk.IntVar(value=0)
+        
+        # Create UI
         self.create_header()
         self.create_main_content()
         self.create_footer()
         
-        self.refresh_model_list()
-        self.update_data_count()
+        # Show welcome guide on startup
+        self.root.after(1000, self.show_welcome_guide)
         
-        # Show welcome message
-        self.show_welcome_guide()
-        
+        # Check setup status
+        self.root.after(2000, self.check_setup_status)
+
     def show_welcome_guide(self):
         """Show welcome message with next steps"""
         steps = [
@@ -408,51 +422,52 @@ class ModernApp:
         
         # Generate Button
         generate_btn = ModernButton(gen_frame, text="🚀 GENERATE VOCALS", 
-                                  command=self.run_generate,
+                                  command=self.generate,
                                   bg='#00ff88', fg='#1a1a1a', 
                                   font=('Segoe UI', 16, 'bold'))
         generate_btn.pack(pady=20)
         
-    def create_training_tab(self, notebook):
-        train_frame = ModernFrame(notebook)
-        notebook.add(train_frame, text='📚 Training Data')
+    def create_models_tab(self, notebook):
+    models_frame = ModernFrame(notebook)
+    notebook.add(models_frame, text='🤖 Models')
         
-        # Training Data Section
-        data_frame = ModernFrame(train_frame)
-        data_frame.pack(fill='x', padx=10, pady=10)
+    # Model Loading Section
+    load_frame = ModernFrame(models_frame)
+    load_frame.pack(fill='x', padx=10, pady=10)
         
-        tk.Label(data_frame, text="📂 TRAINING DATA MANAGEMENT", font=('Segoe UI', 14, 'bold'), 
-                fg='#00ff88', bg='#2b2b2b').pack(anchor='w')
+    tk.Label(load_frame, text="🤖 LOAD VOICE MODEL", font=('Segoe UI', 14, 'bold'), 
+            fg='#00ff88', bg='#2b2b2b').pack(anchor='w')
         
-        # Import Buttons
-        btn_frame = tk.Frame(data_frame, bg='#2b2b2b')
-        btn_frame.pack(fill='x', pady=10)
+    # Model selection
+    model_frame = tk.Frame(load_frame, bg='#2b2b2b')
+    model_frame.pack(fill='x', pady=10)
         
-        single_btn = ModernButton(btn_frame, text="📁 Import Single File", 
-                                command=self.import_single_clip,
-                                bg='#4a90e2', fg='white')
-        single_btn.pack(side='left', padx=5)
+    tk.Label(model_frame, text="Select Model:", font=('Segoe UI', 11, 'bold'), 
+            fg='white', bg='#2b2b2b').pack(side='left', padx=(0, 10))
         
-        folder_btn = ModernButton(btn_frame, text="📁 Import Entire Folder", 
-                                 command=self.import_folder,
-                                 bg='#27ae60', fg='white')
-        folder_btn.pack(side='left', padx=5)
+    self.model_dropdown = ttk.Combobox(model_frame, textvariable=self.model_var, 
+                                  values=[], state='readonly', width=30,
+                                  style='Dark.TCombobox')
+    self.model_dropdown.pack(side='left', padx=10)
         
-        open_btn = ModernButton(btn_frame, text="📂 Open Data Folder", 
-                              command=self.open_data_folder,
-                              bg='#f39c12', fg='white')
-        open_btn.pack(side='left', padx=5)
+    # Auto-load best model on startup
+    self.root.after(500, self.auto_load_best_model)
         
-        # Data Count
-        self.data_count = tk.Label(data_frame, text="Training clips: 0", 
-                                  font=('Segoe UI', 12, 'bold'), 
-                                  fg='#3498db', bg='#2b2b2b')
-        self.data_count.pack(anchor='w', pady=10)
+    # Load button
+    load_btn = ModernButton(model_frame, text="� Load Model", 
+                        command=self.load_model,
+                        bg='#3498db', fg='white')
+    load_btn.pack(side='left', padx=10)
         
-        # Voice Cloning Section
-        clone_frame = ModernFrame(train_frame)
-        clone_frame.pack(fill='x', padx=10, pady=10)
+    # Model info
+    self.model_info = tk.Label(load_frame, text="No model loaded", 
+                           font=('Segoe UI', 10), 
+                           fg='#888888', bg='#2b2b2b')
+    self.model_info.pack(anchor='w', pady=5)
         
+def create_training_tab(self, notebook):
+    train_frame = ModernFrame(notebook)
+    notebook.add(train_frame, text='📚 Training Data')
         tk.Label(clone_frame, text="🎤 VOICE CLONING", font=('Segoe UI', 14, 'bold'), 
                 fg='#e74c3c', bg='#2b2b2b').pack(anchor='w')
         
@@ -590,22 +605,6 @@ class ModernApp:
         if PRETRAINED_MODELS:
             self.download_var.set(list(PRETRAINED_MODELS.keys())[0])
             
-    def create_footer(self):
-        footer_frame = ModernFrame(self.root, bg='#1a1a1a', relief='flat', bd=0)
-        footer_frame.pack(fill='x', pady=10)
-        
-        self.status = tk.Label(footer_frame, text="🟢 Ready to create amazing vocals!", 
-                             font=('Segoe UI', 11, 'bold'), 
-                             fg='#00ff88', bg='#1a1a1a')
-        self.status.pack()
-        
-    def update_data_count(self):
-        audio_extensions = ["*.wav", "*.mp3", "*.flac", "*.ogg", "*.m4a", "*.aiff", "*.aac"]
-        count = 0
-        for ext in audio_extensions:
-            count += len(glob.glob(os.path.join(DATA, ext)))
-        self.data_count.config(text=f"📊 Training clips: {count}")
-        
     def refresh_model_list(self):
         models = get_available_models()
         model_names = [name for name, path in models] if models else ["No models available"]
@@ -703,61 +702,27 @@ class ModernApp:
             ("Audio Files", "*.wav *.mp3 *.flac *.ogg *.m4a *.aiff *.aac"),
             ("WAV Files", "*.wav"),
             ("MP3 Files", "*.mp3"),
+            ("M4A Files", "*.m4a"),
             ("FLAC Files", "*.flac"),
             ("All Files", "*.*")
         ]
-        f = filedialog.askopenfilename(filetypes=filetypes)
-        if f:
-            self.audio_path.set(f)
-            
-    def import_single_clip(self):
-        filetypes = [
-            ("Audio Files", "*.wav *.mp3 *.flac *.ogg *.m4a *.aiff *.aac"),
-            ("WAV Files", "*.wav"),
-            ("MP3 Files", "*.mp3"),
-            ("FLAC Files", "*.flac"),
-            ("All Files", "*.*")
-        ]
-        files = filedialog.askopenfilenames(filetypes=filetypes)
-        count = 0
-        for f in files:
-            try:
-                shutil.copy(f, DATA)
-                count += 1
-            except Exception as e:
-                print(f"Error copying {f}: {e}")
-        if count > 0:
-            messagebox.showinfo("✅ Imported", f"{count} clip(s) imported to dataset.")
-            self.update_data_count()
-            
-    def import_folder(self):
-        folder = filedialog.askdirectory(title="Select FOLDER containing audio files to import")
-        if not folder:
-            return
+    )
+    
+    if file_path:
+        self.update_operation_progress("📁 Copying audio file...", 50, "Copying to dataset folder")
         
-        count = 0
-        audio_extensions = ["*.wav", "*.mp3", "*.flac", "*.ogg", "*.m4a", "*.aiff", "*.aac"]
+        filename = os.path.basename(file_path)
+        dest = os.path.join(DATA, filename)
         
-        for root_dir, subdirs, files in os.walk(folder):
-            for ext in audio_extensions:
-                for f in glob.glob(os.path.join(root_dir, ext)):
-                    try:
-                        filename = os.path.basename(f)
-                        dest_path = os.path.join(DATA, filename)
-                        if os.path.exists(dest_path):
-                            name, ext = os.path.splitext(filename)
-                            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                            filename = f"{name}_{timestamp}{ext}"
-                            dest_path = os.path.join(DATA, filename)
-                        shutil.copy(f, dest_path)
-                        count += 1
-                    except Exception as e:
-                        print(f"Error copying {f}: {e}")
+        # Handle duplicates
+        counter = 1
+        base_name, ext = os.path.splitext(filename)
+        while os.path.exists(dest):
+            new_name = f"{base_name}_{counter}{ext}"
+            dest = os.path.join(DATA, new_name)
+            counter += 1
         
-        if count > 0:
-            messagebox.showinfo("✅ Import Complete", f"Successfully imported {count} audio files!\n\nFiles saved to:\n{DATA}")
-            self.update_data_count()
-        else:
+        shutil.copy2(file_path, dest)
             messagebox.showwarning("⚠️ No Files Found", "No audio files found in the selected folder.")
             
     def open_data_folder(self):
@@ -788,6 +753,54 @@ class ModernApp:
             messagebox.showinfo("✅ Imported", f"{count} model(s) imported to models folder.")
             self.refresh_model_list()
             
+    def auto_load_best_model(self):
+        """Auto-load the best available model on startup"""
+        self.update_operation_progress("🔍 Scanning for models...", 30, "Looking for available voice models")
+        
+        models = get_available_models()
+        
+        if not models:
+            self.update_operation_progress("❌ No models found", 0, "Download or create a model first")
+            return
+        
+        # Priority: 2Pac models first, then custom, then pre-trained
+        priority_models = []
+        
+        # Check for 2Pac models specifically
+        for model in models:
+            if "2pac" in model.lower():
+                priority_models.insert(0, model)
+        
+        # Check for other custom/enhanced models
+        for model in models:
+            if ("custom" in model.lower() or "enhanced" in model.lower()) and model not in priority_models:
+                priority_models.append(model)
+        
+        # Add remaining models
+        for model in models:
+            if model not in priority_models:
+                priority_models.append(model)
+        
+        # Select best model (prioritize 2Pac)
+        best_model = "2pac_enhanced_voice" if "2pac_enhanced_voice" in models else (
+                    "2pac_custom_voice" if "2pac_custom_voice" in models else (
+                        priority_models[0] if priority_models else models[0]
+                    )
+                )
+        
+        self.update_operation_progress(f"🎯 Auto-loading 2Pac: {best_model}", 70, "Loading 2Pac voice model")
+        
+        # Set the model in dropdown
+        self.model_var.set(best_model)
+        
+        # Auto-load the model
+        self.load_selected_model()
+        
+        self.update_operation_progress(f"✅ 2Pac model loaded: {best_model}!", 100, "Ready to generate 2Pac vocals")
+        
+        # Reset progress after 3 seconds
+        self.root.after(3000, lambda: self.update_operation_progress("🎤 2Pac Ready - Generate Vocals!", 0))
+    
     def load_selected_model(self):
         selected = self.model_var.get()
         models = get_available_models()
@@ -834,12 +847,44 @@ class ModernApp:
                 return
         
         # Check for available pre-trained models
-        available_models = []
-        for name, info in PRETRAINED_MODELS.items():
-            model_path = os.path.join(MODELS, info["filename"])
-            if os.path.exists(model_path):
-                available_models.append((name, model_path))
-        
+        def get_available_models():
+            """Get list of available models"""
+            models = []
+            
+            # Check models directory for .pth files
+            if os.path.exists(MODELS):
+                for file in os.listdir(MODELS):
+                    if file.endswith('.pth'):
+                        models.append(file.replace('.pth', ''))
+            
+            # Check for custom models in subdirectories
+            if os.path.exists(MODELS):
+                for subdir in os.listdir(MODELS):
+                    subdir_path = os.path.join(MODELS, subdir)
+                    if os.path.isdir(subdir_path):
+                        # Check for model.pth in subdirectory
+                        model_file = os.path.join(subdir_path, 'model.pth')
+                        if os.path.exists(model_file):
+                            models.append(subdir)
+            
+            # Check for enhanced models
+            if os.path.exists(MODELS):
+                for subdir in os.listdir(MODELS):
+                    subdir_path = os.path.join(MODELS, subdir)
+                    if os.path.isdir(subdir_path):
+                        enhanced_file = os.path.join(subdir_path, 'enhanced_model.json')
+                        if os.path.exists(enhanced_file):
+                            models.append(subdir)
+            
+            # Check data directory for models
+            if os.path.exists(DATA):
+                for file in os.listdir(DATA):
+                    if file.endswith('.pth'):
+                        models.append(file.replace('.pth', ''))
+            
+            return sorted(list(set(models)))  # Remove duplicates
+
+        available_models = get_available_models()
         if not available_models:
             messagebox.showwarning("⚠️ No Pre-trained Models", 
                                 "Please download a pre-trained model first!\n"

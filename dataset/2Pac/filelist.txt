@@ -1,0 +1,13 @@
+speaker_0003.wav|2Pac
+speaker_0004.wav|2Pac
+speaker_0002.wav|2Pac
+speaker_0005.wav|2Pac
+speaker_0001.wav|2Pac
+speaker_0007.mp3|2Pac
+speaker_0006.mp3|2Pac
+speaker_0010.mp3|2Pac
+speaker_0013.mp3|2Pac
+speaker_0008.mp3|2Pac
+speaker_0009.mp3|2Pac
+speaker_0011.mp3|2Pac
+speaker_0012.mp3|2Pac
