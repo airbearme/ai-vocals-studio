@@ -42,6 +42,26 @@ logs/
 temp/
 tmp/
 
-# Audio files (keep originals, ignore processed)
+# Audio files — large, keep local only
+dataset/**/*.wav
+dataset/**/*.mp3
+dataset/**/*.flac
+dataset/**/*.m4a
+dataset/**/*.ogg
+dataset/**/*.aiff
+dataset/**/*.aac
 dataset/*_processed.*
 dataset/*_temp.*
+
+# Generated outputs
+output/**/*.wav
+output/**/*.mp3
+outputs/**/*.wav
+outputs/**/*.mp3
+input/**/*.wav
+input/**/*.mp3
+
+# Model binaries — import/train locally
+models/**/*.pth
+models/**/*.pt
+models/**/*.ckpt
