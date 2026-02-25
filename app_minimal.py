@@ -11,12 +11,19 @@ import json
 import threading
 import time
 from pathlib import Path
+import numpy as np
+import soundfile as sf
+from gtts import gTTS
+from pydub import AudioSegment
+import tempfile
+import shutil
 
 class AIVocalsStudioMinimal:
     def __init__(self, root):
         self.root = root
         self.root.title("AI Vocals Studio - Minimal")
-        self.root.geometry("900x700")
+        self.root.geometry("1200x800")
+        self.root.minsize(1000, 700)
         
         # Set up directories
         self.DATA = Path("dataset")
@@ -32,6 +39,55 @@ class AIVocalsStudioMinimal:
         self.current_operation = tk.StringVar(value="Ready")
         self.operation_progress = tk.IntVar(value=0)
         self.progress_text = tk.StringVar(value="0%")
+        
+        # Voice persona characteristics
+        self.voice_personas = {
+            "2pac": {
+                "pitch_shift": -0.2,
+                "speed": 1.1,
+                "reverb": 0.3,
+                "distortion": 0.1,
+                "eq_low": 1.2,
+                "eq_mid": 0.9,
+                "eq_high": 1.1
+            },
+            "default": {
+                "pitch_shift": 0,
+                "speed": 1.0,
+                "reverb": 0.1,
+                "distortion": 0,
+                "eq_low": 1.0,
+                "eq_mid": 1.0,
+                "eq_high": 1.0
+            },
+            "male": {
+                "pitch_shift": -0.3,
+                "speed": 1.0,
+                "reverb": 0.2,
+                "distortion": 0.05,
+                "eq_low": 1.3,
+                "eq_mid": 0.8,
+                "eq_high": 0.9
+            },
+            "female": {
+                "pitch_shift": 0.3,
+                "speed": 1.0,
+                "reverb": 0.15,
+                "distortion": 0,
+                "eq_low": 0.8,
+                "eq_mid": 1.1,
+                "eq_high": 1.2
+            },
+            "robot": {
+                "pitch_shift": 0,
+                "speed": 0.9,
+                "reverb": 0.4,
+                "distortion": 0.2,
+                "eq_low": 1.5,
+                "eq_mid": 0.7,
+                "eq_high": 0.5
+            }
+        }
         
         # Create UI
         self.create_styles()
@@ -63,33 +119,67 @@ class AIVocalsStudioMinimal:
     
     def create_main_content(self):
         # Create notebook for tabs
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill='both', expand=True, padx=10, pady=5)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill='both', expand=True, padx=10, pady=5)
         
         # Generation Tab
-        self.create_generation_tab(notebook)
+        self.create_generation_tab(self.notebook)
         
         # Models Tab
-        self.create_models_tab(notebook)
+        self.create_models_tab(self.notebook)
         
         # Training Tab
-        self.create_training_tab(notebook)
+        self.create_training_tab(self.notebook)
     
     def create_generation_tab(self, notebook):
         gen_frame = ttk.Frame(notebook)
         notebook.add(gen_frame, text="🎵 Generate")
         
+        # Input Type Selection
+        input_type_frame = ttk.LabelFrame(gen_frame, text="Input Type", padding=10)
+        input_type_frame.pack(fill='x', padx=10, pady=5)
+        
+        self.input_type = tk.StringVar(value="audio")
+        ttk.Radiobutton(input_type_frame, text="🎵 Audio File", variable=self.input_type, value="audio", command=self.toggle_input_type).pack(side='left', padx=10)
+        ttk.Radiobutton(input_type_frame, text="📝 Text", variable=self.input_type, value="text", command=self.toggle_input_type).pack(side='left', padx=10)
+        
         # Audio Input Section
-        input_frame = ttk.LabelFrame(gen_frame, text="Audio Input", padding=10)
-        input_frame.pack(fill='x', padx=10, pady=5)
+        self.audio_frame = ttk.LabelFrame(gen_frame, text="Audio Input", padding=10)
+        self.audio_frame.pack(fill='x', padx=10, pady=5)
         
-        ttk.Label(input_frame, text="Select audio file:").pack(anchor='w')
+        ttk.Label(self.audio_frame, text="Select audio file:").pack(anchor='w')
         
-        audio_select_frame = ttk.Frame(input_frame)
+        audio_select_frame = ttk.Frame(self.audio_frame)
         audio_select_frame.pack(fill='x', pady=5)
         
         ttk.Entry(audio_select_frame, textvariable=self.audio_path, width=50).pack(side='left', fill='x', expand=True)
         ttk.Button(audio_select_frame, text="Browse", command=self.select_audio).pack(side='right', padx=(5, 0))
+        
+        # Text Input Section
+        self.text_frame = ttk.LabelFrame(gen_frame, text="Text Input", padding=10)
+        
+        ttk.Label(self.text_frame, text="Enter text to convert to speech:").pack(anchor='w')
+        
+        self.text_input = tk.Text(self.text_frame, height=4, wrap='word')
+        text_scrollbar = ttk.Scrollbar(self.text_frame, orient='vertical', command=self.text_input.yview)
+        self.text_input.configure(yscrollcommand=text_scrollbar.set)
+        
+        self.text_input.pack(side='left', fill='both', expand=True, pady=5)
+        text_scrollbar.pack(side='right', fill='y')
+        
+        # Text Settings
+        text_settings_frame = ttk.Frame(self.text_frame)
+        text_settings_frame.pack(fill='x', pady=5)
+        
+        ttk.Label(text_settings_frame, text="Voice:").pack(side='left')
+        self.tts_voice = tk.StringVar(value="default")
+        voice_combo = ttk.Combobox(text_settings_frame, textvariable=self.tts_voice, values=["default", "male", "female", "robot"], state='readonly', width=15)
+        voice_combo.pack(side='left', padx=(5, 10))
+        
+        ttk.Label(text_settings_frame, text="Speed:").pack(side='left')
+        self.tts_speed = tk.StringVar(value="1.0")
+        speed_combo = ttk.Combobox(text_settings_frame, textvariable=self.tts_speed, values=["0.5", "0.8", "1.0", "1.2", "1.5"], state='readonly', width=10)
+        speed_combo.pack(side='left', padx=(5, 0))
         
         # Model Selection
         model_frame = ttk.LabelFrame(gen_frame, text="Voice Model", padding=10)
@@ -183,6 +273,103 @@ class AIVocalsStudioMinimal:
         self.progress_label = ttk.Label(status_frame, textvariable=self.progress_text)
         self.progress_label.pack(side='right')
     
+    def apply_voice_transformation(self, audio_segment, persona_name):
+        """Apply voice persona characteristics to audio"""
+        persona = self.voice_personas.get(persona_name.lower(), self.voice_personas["default"])
+        
+        # Apply pitch shift (simulated with speed change)
+        if persona["pitch_shift"] != 0:
+            speed_factor = 1.0 + persona["pitch_shift"]
+            audio_segment = audio_segment._spawn(audio_segment.raw_data, overrides={
+                "frame_rate": int(audio_segment.frame_rate * speed_factor)
+            }).set_frame_rate(audio_segment.frame_rate)
+        
+        # Apply speed change
+        if persona["speed"] != 1.0:
+            audio_segment = audio_segment.speedup(playback_speed=persona["speed"])
+        
+        # Apply EQ (simulated with gain adjustments)
+        if persona["eq_low"] != 1.0 or persona["eq_mid"] != 1.0 or persona["eq_high"] != 1.0:
+            # Simple EQ simulation using gain
+            gain = (persona["eq_low"] + persona["eq_mid"] + persona["eq_high"]) / 3.0
+            audio_segment = audio_segment + (10 * (gain - 1.0))  # Convert to dB
+        
+        # Apply reverb (simulated with echo)
+        if persona["reverb"] > 0:
+            delay = int(100 * persona["reverb"])  # Delay in ms
+            echo = audio_segment - 6  # Reduce volume for echo
+            echo = echo.overlay(audio_segment, position=delay)
+            audio_segment = audio_segment.overlay(echo)
+        
+        # Apply distortion (simulated with overdrive)
+        if persona["distortion"] > 0:
+            audio_segment = audio_segment + (6 * persona["distortion"])  # Add gain for distortion effect
+        
+        return audio_segment
+    
+    def generate_audio_from_text(self, text, voice="default", speed="1.0"):
+        """Generate audio from text using gTTS"""
+        try:
+            # Generate speech using gTTS
+            tts = gTTS(text=text, lang='en', slow=False)
+            
+            # Save to temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+                tts.save(temp_file.name)
+                
+                # Convert to WAV for processing
+                audio = AudioSegment.from_mp3(temp_file.name)
+                
+                # Apply voice transformation
+                persona_name = voice if voice in self.voice_personas else "default"
+                audio = self.apply_voice_transformation(audio, persona_name)
+                
+                # Apply speed adjustment
+                speed_factor = float(speed)
+                if speed_factor != 1.0:
+                    audio = audio.speedup(playback_speed=speed_factor)
+                
+                # Export as WAV
+                wav_path = temp_file.name.replace('.mp3', '.wav')
+                audio.export(wav_path, format='wav', parameters=["-ar", "44100"])
+                
+                # Clean up temp MP3
+                os.unlink(temp_file.name)
+                
+                return wav_path
+                
+        except Exception as e:
+            raise Exception(f"Text-to-speech generation failed: {str(e)}")
+    
+    def process_audio_file(self, input_path, model_name):
+        """Process existing audio file with voice transformation"""
+        try:
+            # Load audio file
+            audio = AudioSegment.from_file(input_path)
+            
+            # Normalize audio
+            audio = audio.normalize()
+            
+            # Apply voice transformation based on model
+            persona_name = model_name.lower() if model_name.lower() in self.voice_personas else "default"
+            audio = self.apply_voice_transformation(audio, persona_name)
+            
+            # Export as WAV
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+                audio.export(temp_file.name, format='wav', parameters=["-ar", "44100"])
+                return temp_file.name
+                
+        except Exception as e:
+            raise Exception(f"Audio processing failed: {str(e)}")
+    
+    def toggle_input_type(self):
+        if self.input_type.get() == "audio":
+            self.text_frame.pack_forget()
+            self.audio_frame.pack(fill='x', padx=10, pady=5)
+        else:
+            self.audio_frame.pack_forget()
+            self.text_frame.pack(fill='x', padx=10, pady=5)
+    
     def update_operation_progress(self, operation, progress, suggestion=""):
         self.current_operation.set(operation)
         self.operation_progress.set(progress)
@@ -239,53 +426,126 @@ class AIVocalsStudioMinimal:
         self.update_operation_progress("✅ Model scan complete", 100, f"Found {len(models)} models")
     
     def generate_vocals(self):
-        if not self.audio_path.get():
-            messagebox.showwarning("No Audio", "Please select an audio file first.")
-            return
+        # Check input type and validate
+        if self.input_type.get() == "audio":
+            if not self.audio_path.get():
+                messagebox.showwarning("No Audio", "Please select an audio file first.")
+                return
+            input_source = self.audio_path.get()
+            input_type_name = "audio file"
+        else:
+            text_content = self.text_input.get("1.0", "end-1c").strip()
+            if not text_content:
+                messagebox.showwarning("No Text", "Please enter some text to convert.")
+                return
+            input_source = text_content
+            input_type_name = "text input"
         
         if not self.model_var.get():
             messagebox.showwarning("No Model", "Please select a voice model first.")
             return
         
-        # Simulate generation process
+        # Generate real audio
         def generation_worker():
+            temp_file = None
             try:
-                self.update_operation_progress("🎤 Starting vocal generation...", 10, "Initializing voice synthesis")
+                self.update_operation_progress("🎤 Starting vocal generation...", 10, f"Processing {input_type_name}")
+                time.sleep(0.5)
+                
+                if self.input_type.get() == "text":
+                    self.update_operation_progress("🔤 Converting text to speech...", 30, "Generating base audio from text")
+                    time.sleep(1)
+                    
+                    # Generate audio from text
+                    temp_file = self.generate_audio_from_text(
+                        input_source, 
+                        voice=self.tts_voice.get(), 
+                        speed=self.tts_speed.get()
+                    )
+                    
+                    self.add_output(f"📝 Generated speech from text: {len(input_source)} characters")
+                    
+                else:
+                    self.update_operation_progress("🔄 Processing audio...", 30, "Loading and processing audio file")
+                    time.sleep(1)
+                    
+                    # Process existing audio file
+                    temp_file = self.process_audio_file(input_source, self.model_var.get())
+                    
+                    self.add_output(f"🎵 Processed audio file: {Path(input_source).name}")
+                
+                self.update_operation_progress("✨ Applying voice transformation...", 60, f"Applying {self.model_var.get()} voice persona")
                 time.sleep(1)
                 
-                self.update_operation_progress("🔄 Processing audio...", 30, "Extracting vocals and applying voice model")
-                time.sleep(2)
+                # Get model name for persona
+                model_name = self.model_var.get().lower()
+                if model_name not in self.voice_personas:
+                    model_name = "default"
                 
-                self.update_operation_progress("✨ Applying voice conversion...", 60, "Converting to target voice")
-                time.sleep(2)
+                # Apply voice persona transformation
+                audio = AudioSegment.from_wav(temp_file)
+                audio = self.apply_voice_transformation(audio, model_name)
                 
-                self.update_operation_progress("💾 Saving output...", 90, "Generating final audio file")
-                time.sleep(1)
+                self.update_operation_progress("💾 Saving output...", 90, "Encoding to final audio format")
+                time.sleep(0.5)
                 
-                # Create output file
-                input_name = Path(self.audio_path.get()).stem
-                model_name = self.model_var.get()
-                output_name = f"{input_name}_{model_name}_generated.wav"
+                # Create final output file
+                if self.input_type.get() == "text":
+                    input_name = "text_input"
+                else:
+                    input_name = Path(self.audio_path.get()).stem
+                model_name_display = self.model_var.get()
+                output_name = f"{input_name}_{model_name_display}_generated.wav"
                 output_path = self.OUTPUT / output_name
                 
-                # Create a dummy output file for demonstration
-                with open(output_path, 'w') as f:
-                    f.write("# Dummy generated audio file\n")
+                # Export with proper audio settings - simplified for maximum compatibility
+                audio.export(str(output_path), format='wav')
                 
-                self.update_operation_progress("✅ Generation complete!", 100, f"Output saved as {output_name}")
-                self.add_output(f"🎉 Successfully generated vocals: {output_name}")
-                
-                messagebox.showinfo("Success", f"Vocals generated successfully!\nOutput: {output_name}")
+                # Verify file was created and has content
+                if output_path.exists() and output_path.stat().st_size > 1000:
+                    self.update_operation_progress("✅ Generation complete!", 100, f"Output saved as {output_name}")
+                    self.add_output(f"🎉 Successfully generated vocals from {input_type_name}: {output_name}")
+                    self.add_output(f"📊 File size: {output_path.stat().st_size / 1024:.1f} KB")
+                    self.add_output(f"🎵 Duration: {len(audio) / 1000:.1f} seconds")
+                    
+                    # Offer to play the file
+                    if messagebox.askyesno("Success", f"Vocals generated successfully!\n\nOutput: {output_name}\n\nWould you like to play the audio file?"):
+                        self.play_audio_file(str(output_path))
+                else:
+                    raise Exception("Generated file is empty or missing")
                 
             except Exception as e:
                 self.update_operation_progress("❌ Generation failed", 0, "Check error details")
                 self.add_output(f"❌ Error: {str(e)}")
                 messagebox.showerror("Error", f"Generation failed: {str(e)}")
+            
+            finally:
+                # Clean up temporary file
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.unlink(temp_file)
+                    except:
+                        pass
         
         # Run in thread
         thread = threading.Thread(target=generation_worker)
         thread.daemon = True
         thread.start()
+    
+    def play_audio_file(self, file_path):
+        """Play audio file using system default player"""
+        try:
+            if os.name == 'nt':  # Windows
+                os.startfile(file_path)
+            elif os.name == 'posix':  # macOS and Linux
+                if 'darwin' in os.sys.platform:  # macOS
+                    os.system(f'open "{file_path}"')
+                else:  # Linux
+                    os.system(f'xdg-open "{file_path}"')
+            self.add_output(f"🔊 Playing audio: {Path(file_path).name}")
+        except Exception as e:
+            self.add_output(f"❌ Failed to play audio: {str(e)}")
+            messagebox.showwarning("Playback Error", f"Could not play audio file: {str(e)}")
     
     def import_single_clip(self):
         file_path = filedialog.askopenfilename(

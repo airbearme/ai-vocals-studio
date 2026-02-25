@@ -19,7 +19,7 @@ pip install -q gtts demucs so-vits-svc-fork librosa numpy soundfile pydub
 
 # Run the application
 echo "🚀 Launching AI Vocals Studio..."
-python app_modern.py
+python app_studio.py
 
 # Keep terminal open if there's an error
 if [ $? -ne 0 ]; then
