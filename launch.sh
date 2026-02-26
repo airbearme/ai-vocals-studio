@@ -13,5 +13,8 @@ source venv/bin/activate
 # Install / update deps silently
 pip install -q gtts librosa numpy soundfile pydub 2>/dev/null
 
+# Ensure display is set (needed when launched from desktop icon or Claude)
+export DISPLAY="${DISPLAY:-:0}"
+
 # Launch
 exec python app_studio.py "$@"

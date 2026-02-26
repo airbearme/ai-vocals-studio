@@ -62,7 +62,7 @@ All long-running operations run in daemon threads via `threading.Thread` to keep
 
 `refresh_models()` in both apps scans `models/` for:
 - `.pth` files directly in `models/`
-- `model.pth` inside subdirectories (e.g., `models/2pac_custom_voice/model.pth`)
+- `model.pth` inside subdirectories (e.g., `models/Pacaveli/model.pth`)
 
 The model name shown in the UI is the directory name or file stem.
 

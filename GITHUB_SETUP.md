@@ -37,7 +37,7 @@ You'll need to authenticate with GitHub using one of these methods:
 ## 🎤 What's in the Repository
 
 ✅ **Complete AI Vocals Studio**  
-✅ **Custom 2Pac Voice Model**  
+✅ **Custom Pacaveli Voice Model**  
 ✅ **One-click Installation**  
 ✅ **Beautiful Dark UI**  
 ✅ **Voice Cloning Features**  

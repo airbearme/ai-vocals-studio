@@ -64,13 +64,13 @@ class SoVitsEngine:
         engine = SoVitsEngine(models_dir='models', dataset_dir='dataset')
 
         # Check if model is fully trained
-        status = engine.model_status('2pac_custom_voice')
+        status = engine.model_status('Pacaveli')
         if status == STATUS_READY:
-            engine.load('2pac_custom_voice')
-            engine.convert('2pac_custom_voice', 'input.wav', 'output.wav', pitch_shift=-3)
+            engine.load('Pacaveli')
+            engine.convert('Pacaveli', 'input.wav', 'output.wav', pitch_shift=-3)
 
         # Train a new model
-        engine.train('2pac_custom_voice', progress_cb=my_callback)
+        engine.train('Pacaveli', progress_cb=my_callback)
     """
 
     def __init__(self,
@@ -354,10 +354,10 @@ class SoVitsEngine:
         # ── Steps 2-5: CLI pipeline ──
         steps = [
             ('Resampling audio to 44 100 Hz…',  12,  ['svc', 'pre-resample']),
-            ('Generating model config…',         25,  ['svc', 'pre-config', '-t', 'so-vits-svc-4']),
-            ('Extracting HuBERT features…',      45,  ['svc', 'pre-hubert', '--use-32-precision']),
+            ('Generating model config…',         25,  ['svc', 'pre-config', '-t', 'so-vits-svc-4.0v1']),
+            ('Extracting HuBERT features…',      45,  ['svc', 'pre-hubert', '-nf']),
             ('Training model — this can take hours on CPU…', 85,
-             ['svc', 'train', '-t', 'so-vits-svc-4']),
+             ['svc', 'train']),
         ]
 
         for msg, pct, cmd in steps:

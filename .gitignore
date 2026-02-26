@@ -65,3 +65,14 @@ input/**/*.mp3
 models/**/*.pth
 models/**/*.pt
 models/**/*.ckpt
+
+# HuBERT/SO-VITS preprocessed features — large, regenerate with svc pre-hubert
+dataset/**/*.data.pt
+dataset/44k/
+dataset_raw/
+
+# Colab packaging — generated on demand by cloud_train.sh
+colab_package/
+*_colab_training.zip
+*_training.zip
+logs/

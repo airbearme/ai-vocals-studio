@@ -1,0 +1,2 @@
+dataset/44k/Pacaveli/speaker_0009.wav
+dataset/44k/Pacaveli/speaker_0013.wav

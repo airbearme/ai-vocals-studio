@@ -61,9 +61,8 @@ FONT = {
 GLITCH_CHARS = '!@#$%^&|/\\<>?{}[]01XY'
 
 VOICE_PERSONAS = {
-    '2pac':               {'pitch': -3,   'speed': 1.08, 'reverb': 0.35, 'gain': 3,  'desc': 'West Coast rap – deep, raw authority'},
-    '2pac_custom_voice':  {'pitch': -3,   'speed': 1.08, 'reverb': 0.35, 'gain': 3,  'desc': 'Custom trained 2Pac voice'},
-    '2pac_enhanced_voice':{'pitch': -3.5, 'speed': 1.10, 'reverb': 0.40, 'gain': 4,  'desc': 'Enhanced 2Pac – maximum realism'},
+    'pacaveli':          {'pitch': -3,   'speed': 1.08, 'reverb': 0.35, 'gain': 3,  'desc': 'Pacaveli – West Coast rap, deep raw authority'},
+    'pacaveli_enhanced': {'pitch': -3.5, 'speed': 1.10, 'reverb': 0.40, 'gain': 4,  'desc': 'Pacaveli Enhanced – maximum realism'},
     'male':               {'pitch': -4,   'speed': 1.00, 'reverb': 0.20, 'gain': 2,  'desc': 'Generic deep male voice'},
     'female':             {'pitch': 4,    'speed': 1.00, 'reverb': 0.15, 'gain': 0,  'desc': 'Generic bright female voice'},
     'robot':              {'pitch': 0,    'speed': 0.88, 'reverb': 0.50, 'gain': 6,  'desc': 'Vocoder / robot effect'},
@@ -1000,9 +999,12 @@ class StudioPro:
         self._train_btn.pack(side='left', padx=(0,10))
         self._stop_btn = NeonBtn(tr,'⏹  STOP', cmd=self._stop_training,
                                  color=C['red'], w=110, h=44)
-        self._stop_btn.pack(side='left')
+        self._stop_btn.pack(side='left', padx=(0,10))
+        NeonBtn(tr,'☁️  CLOUD TRAIN', cmd=self._cloud_train,
+                color=C['cyan'], w=190, h=44).pack(side='left')
         tk.Label(tc,
-                 text='Pipeline: pre-resample → pre-config → pre-hubert → train  |  Requires dataset audio files.',
+                 text='Pipeline: pre-resample → pre-config → pre-hubert → train  |  Requires dataset audio files.\n'
+                      '☁️ Cloud Train packages your data → opens Google Drive + Colab (free T4 GPU, ~6-12 hrs).',
                  fg=C['dim'], bg=C['card2'], font=FONT['xs'], wraplength=900, justify='left'
                  ).pack(anchor='w', pady=(0,6))
         self._train_log = textbox(tc, height=14, color=C['purple'])
@@ -1413,6 +1415,40 @@ class StudioPro:
     def _stop_training(self):
         self._train_stop.set()
         self._tlog('⏹ Stop signal sent — waiting for process to exit…')
+
+    def _cloud_train(self):
+        name = self.train_model_var.get()
+        if not name:
+            messagebox.showwarning('No Model', 'Select a target model first.'); return
+        import subprocess, pathlib
+        script = pathlib.Path(__file__).parent / 'cloud_train.sh'
+        if not script.exists():
+            messagebox.showerror('Missing Script', f'cloud_train.sh not found at {script}'); return
+        ans = messagebox.askyesno('☁️ Cloud Train',
+            f'Package "{name}" for Google Colab training?\n\n'
+            'This will:\n'
+            '  1. Zip your dataset + feature files\n'
+            '  2. Open Google Drive (upload the zip)\n'
+            '  3. Open Google Colab (run the notebook)\n\n'
+            'Training runs FREE on a T4 GPU (~6-12 hrs).\n'
+            'Ready to continue?')
+        if not ans:
+            return
+        self._tlog(f'☁️ Launching cloud_train.sh for: {name}')
+        def _worker():
+            proc = subprocess.Popen(
+                ['bash', str(script), name],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, cwd=str(script.parent)
+            )
+            for line in proc.stdout:
+                self._tlog(line.rstrip())
+            proc.wait()
+            if proc.returncode == 0:
+                self._tlog('✅ Package ready — check your Desktop for the zip!')
+            else:
+                self._tlog(f'❌ cloud_train.sh exited with code {proc.returncode}')
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _new_model_dlg(self):
         dlg=tk.Toplevel(self.root); dlg.title('New Model')
