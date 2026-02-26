@@ -119,6 +119,12 @@ cp logs/44k/D_0.pth logs/44k/G_0.pth logs/44k/config.json "$PKG_DIR/logs/44k/"
 cp configs/44k/config.json "$PKG_DIR/configs/44k/"
 cp filelists/44k/train.txt filelists/44k/val.txt filelists/44k/test.txt "$PKG_DIR/filelists/44k/"
 
+# Include the Colab notebook as a backup (repo-hosted URL is primary)
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+if [ -f "$SCRIPT_DIR/colab/train_voice_model.ipynb" ]; then
+    cp "$SCRIPT_DIR/colab/train_voice_model.ipynb" "$PKG_DIR/train_voice_model.ipynb"
+fi
+
 echo "🗜  Creating zip (this may take a minute for large datasets)..."
 (cd "$PKG_DIR" && zip -r "$ZIP_OUT" .)
 
