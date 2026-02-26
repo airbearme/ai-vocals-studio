@@ -76,3 +76,6 @@ colab_package/
 *_colab_training.zip
 *_training.zip
 logs/
+
+# Local personal config — never commit this
+.cloud_config

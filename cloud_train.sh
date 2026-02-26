@@ -8,12 +8,19 @@ set -e
 cd "$(dirname "$(readlink -f "$0")")"
 source venv/bin/activate 2>/dev/null || true
 
-# ── Google account to use (change this to your Gmail address) ────
-GOOGLE_ACCOUNT="coden607@gmail.com"
+# Hosted Colab notebook — opens directly from GitHub, no upload needed
+COLAB_NB_URL="https://colab.research.google.com/github/airbearme/ai-vocals-studio/blob/main/colab/train_voice_model.ipynb"
+GDRIVE_URL="https://drive.google.com/drive/my-drive"
 
-# URLs with ?authuser= so the correct Google account opens automatically
-COLAB_NB_URL="https://colab.research.google.com/github/airbearme/ai-vocals-studio/blob/main/colab/train_voice_model.ipynb?authuser=${GOOGLE_ACCOUNT}"
-GDRIVE_URL="https://drive.google.com/drive/my-drive?authuser=${GOOGLE_ACCOUNT}"
+# ── Load local account config (never stored in git) ──────────────
+CONFIG_FILE="$(dirname "$(readlink -f "$0")")/.cloud_config"
+if [ -f "$CONFIG_FILE" ]; then
+    GOOGLE_ACCOUNT="$(grep '^GOOGLE_ACCOUNT=' "$CONFIG_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'")"
+    if [ -n "$GOOGLE_ACCOUNT" ]; then
+        COLAB_NB_URL="${COLAB_NB_URL}?authuser=${GOOGLE_ACCOUNT}"
+        GDRIVE_URL="${GDRIVE_URL}?authuser=${GOOGLE_ACCOUNT}"
+    fi
+fi
 
 # ── Install mode (after Colab returns files) ──────────────────────
 if [ "$1" = "--install" ]; then
