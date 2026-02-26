@@ -8,9 +8,12 @@ set -e
 cd "$(dirname "$(readlink -f "$0")")"
 source venv/bin/activate 2>/dev/null || true
 
-# Hosted Colab notebook — opens directly from GitHub, no upload needed
-COLAB_NB_URL="https://colab.research.google.com/github/airbearme/ai-vocals-studio/blob/main/colab/train_voice_model.ipynb"
-GDRIVE_URL="https://drive.google.com/drive/my-drive"
+# ── Google account to use (change this to your Gmail address) ────
+GOOGLE_ACCOUNT="coden607@gmail.com"
+
+# URLs with ?authuser= so the correct Google account opens automatically
+COLAB_NB_URL="https://colab.research.google.com/github/airbearme/ai-vocals-studio/blob/main/colab/train_voice_model.ipynb?authuser=${GOOGLE_ACCOUNT}"
+GDRIVE_URL="https://drive.google.com/drive/my-drive?authuser=${GOOGLE_ACCOUNT}"
 
 # ── Install mode (after Colab returns files) ──────────────────────
 if [ "$1" = "--install" ]; then
