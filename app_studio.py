@@ -1001,10 +1001,12 @@ class StudioPro:
                                  color=C['red'], w=110, h=44)
         self._stop_btn.pack(side='left', padx=(0,10))
         NeonBtn(tr,'☁️  CLOUD TRAIN', cmd=self._cloud_train,
-                color=C['cyan'], w=190, h=44).pack(side='left')
+                color=C['cyan'], w=190, h=44).pack(side='left', padx=(0,10))
+        NeonBtn(tr,'📥  INSTALL MODEL', cmd=self._install_model,
+                color=C['green'], w=200, h=44).pack(side='left')
         tk.Label(tc,
-                 text='Pipeline: pre-resample → pre-config → pre-hubert → train  |  Requires dataset audio files.\n'
-                      '☁️ Cloud Train packages your data → opens Google Drive + Colab (free T4 GPU, ~6-12 hrs).',
+                 text='☁️ Cloud Train: packages features → opens Google Drive + Colab (free T4 GPU, ~6-12 hrs).\n'
+                      '📥 Install Model: imports a trained G_*.pth downloaded from Colab into the app.',
                  fg=C['dim'], bg=C['card2'], font=FONT['xs'], wraplength=900, justify='left'
                  ).pack(anchor='w', pady=(0,6))
         self._train_log = textbox(tc, height=14, color=C['purple'])
@@ -1417,24 +1419,22 @@ class StudioPro:
         self._tlog('⏹ Stop signal sent — waiting for process to exit…')
 
     def _cloud_train(self):
+        import subprocess, pathlib
         name = self.train_model_var.get()
         if not name:
             messagebox.showwarning('No Model', 'Select a target model first.'); return
-        import subprocess, pathlib
         script = pathlib.Path(__file__).parent / 'cloud_train.sh'
         if not script.exists():
-            messagebox.showerror('Missing Script', f'cloud_train.sh not found at {script}'); return
-        ans = messagebox.askyesno('☁️ Cloud Train',
-            f'Package "{name}" for Google Colab training?\n\n'
-            'This will:\n'
-            '  1. Zip your dataset + feature files\n'
-            '  2. Open Google Drive (upload the zip)\n'
-            '  3. Open Google Colab (run the notebook)\n\n'
-            'Training runs FREE on a T4 GPU (~6-12 hrs).\n'
-            'Ready to continue?')
-        if not ans:
+            messagebox.showerror('Missing Script', f'cloud_train.sh not found'); return
+        if not messagebox.askyesno('☁️ Cloud Train — Free GPU',
+                f'Train  "{name}"  on Google Colab (free T4 GPU)?\n\n'
+                'After clicking Yes:\n'
+                '  1. Wait ~1-2 min while your data is packaged\n'
+                '  2. Upload the zip to Google Drive (browser opens)\n'
+                '  3. Colab notebook opens — switch to T4 → Run All\n'
+                '  (~6-12 hrs later the trained model downloads automatically)'):
             return
-        self._tlog(f'☁️ Launching cloud_train.sh for: {name}')
+        self._tlog(f'☁️ Packaging {name} for Colab...')
         def _worker():
             proc = subprocess.Popen(
                 ['bash', str(script), name],
@@ -1445,10 +1445,38 @@ class StudioPro:
                 self._tlog(line.rstrip())
             proc.wait()
             if proc.returncode == 0:
-                self._tlog('✅ Package ready — check your Desktop for the zip!')
+                self._tlog('✅ Done! Check your Desktop for the zip, then upload to Drive.')
             else:
-                self._tlog(f'❌ cloud_train.sh exited with code {proc.returncode}')
+                self._tlog(f'❌ Packaging failed (exit {proc.returncode})')
         threading.Thread(target=_worker, daemon=True).start()
+
+    def _install_model(self):
+        import shutil
+        name = self.train_model_var.get()
+        pth = filedialog.askopenfilename(
+            title='Select trained G_*.pth from Colab',
+            filetypes=[('PyTorch checkpoint', '*.pth'), ('All files', '*.*')]
+        )
+        if not pth:
+            return
+        if not name:
+            name = tk.simpledialog.askstring('Model Name',
+                'Install into which model?\n(leave blank to use file name)',
+                parent=self.root) or ''
+            name = name.strip().replace(' ', '_')
+        pth = Path(pth)
+        if not name:
+            name = pth.stem
+        dest = Path(__file__).parent / 'models' / name
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy(pth, dest / pth.name)
+        cfg = pth.parent / 'config.json'
+        if cfg.exists():
+            shutil.copy(cfg, dest / 'config.json')
+        self._tlog(f'✅ Installed  {pth.name}  →  models/{name}/')
+        self.root.after(0, self._refresh_models)
+        messagebox.showinfo('Model Installed',
+            f'Trained model installed to models/{name}/\n\nSwitch to the Generate tab and select it!')
 
     def _new_model_dlg(self):
         dlg=tk.Toplevel(self.root); dlg.title('New Model')
