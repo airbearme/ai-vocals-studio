@@ -1418,36 +1418,109 @@ class StudioPro:
         self._train_stop.set()
         self._tlog('⏹ Stop signal sent — waiting for process to exit…')
 
+    def _get_kaggle_trainer(self):
+        """Return a KaggleTrainer, running first-time setup if needed."""
+        try:
+            from kaggle_trainer import KaggleTrainer
+        except ImportError:
+            messagebox.showerror('Missing Module',
+                'kaggle_trainer.py not found in the app directory.'); return None
+        kt = KaggleTrainer(Path(__file__).parent)
+        if not kt.configured:
+            self._kaggle_setup(kt)
+        return kt if kt.configured else None
+
+    def _kaggle_setup(self, kt=None):
+        """One-time setup dialog — user drops in their kaggle.json."""
+        import subprocess as _sp
+        dlg = tk.Toplevel(self.root)
+        dlg.title('☁️ Kaggle Setup — One Time Only')
+        dlg.configure(bg=C['bg2']); dlg.geometry('560x340')
+        dlg.transient(self.root); dlg.grab_set()
+
+        tk.Label(dlg, text='☁️  FREE GPU TRAINING SETUP', fg=C['cyan'],
+                 bg=C['bg2'], font=FONT['h2']).pack(pady=(18,4))
+        tk.Label(dlg,
+            text='Kaggle gives you a free P100 GPU (faster than Colab T4).\n'
+                 'One-time setup — takes 2 minutes:\n\n'
+                 '  1. Go to  kaggle.com  → sign in (free account)\n'
+                 '  2. Click your avatar → Settings → API → Create New Token\n'
+                 '  3. A file called  kaggle.json  downloads\n'
+                 '  4. Click the button below and pick that file',
+            fg=C['white'], bg=C['bg2'], font=FONT['body'],
+            justify='left', wraplength=520).pack(padx=20, pady=6)
+
+        status_var = tk.StringVar(value='')
+        tk.Label(dlg, textvariable=status_var, fg=C['green'],
+                 bg=C['bg2'], font=FONT['body']).pack(pady=4)
+
+        def pick_json():
+            p = filedialog.askopenfilename(
+                title='Select kaggle.json',
+                filetypes=[('JSON', '*.json'), ('All', '*.*')]
+            )
+            if not p: return
+            try:
+                if kt is None:
+                    from kaggle_trainer import KaggleTrainer
+                    _kt = KaggleTrainer(Path(__file__).parent)
+                else:
+                    _kt = kt
+                _kt.setup_from_file(p)
+                status_var.set(f'✅ Saved! Username: {_kt.kaggle_username()}')
+                self.root.after(1500, dlg.destroy)
+            except Exception as e:
+                status_var.set(f'❌ {e}')
+
+        def open_kaggle():
+            _sp.Popen(['xdg-open', 'https://www.kaggle.com/settings'],
+                      env={**os.environ, 'DISPLAY': os.environ.get('DISPLAY', ':0')})
+
+        br = tk.Frame(dlg, bg=C['bg2']); br.pack(pady=10)
+        NeonBtn(br, '🌐  Open Kaggle Settings', cmd=open_kaggle,
+                color=C['dim'], w=220, h=40).pack(side='left', padx=8)
+        NeonBtn(br, '📂  Pick kaggle.json', cmd=pick_json,
+                color=C['cyan'], w=200, h=40).pack(side='left', padx=8)
+
     def _cloud_train(self):
-        import subprocess, pathlib
         name = self.train_model_var.get()
         if not name:
             messagebox.showwarning('No Model', 'Select a target model first.'); return
-        script = pathlib.Path(__file__).parent / 'cloud_train.sh'
-        if not script.exists():
-            messagebox.showerror('Missing Script', f'cloud_train.sh not found'); return
-        if not messagebox.askyesno('☁️ Cloud Train — Free GPU',
-                f'Train  "{name}"  on Google Colab (free T4 GPU)?\n\n'
-                'After clicking Yes:\n'
-                '  1. Wait ~1-2 min while your data is packaged\n'
-                '  2. Upload the zip to Google Drive (browser opens)\n'
-                '  3. Colab notebook opens — switch to T4 → Run All\n'
-                '  (~6-12 hrs later the trained model downloads automatically)'):
+
+        kt = self._get_kaggle_trainer()
+        if kt is None: return   # setup was shown or failed
+
+        if not messagebox.askyesno('☁️ Kaggle GPU Training — FREE',
+                f'Train  "{name}"  on Kaggle (free P100 GPU)?\n\n'
+                'The app will handle everything automatically:\n'
+                '  • Package + upload your training data\n'
+                '  • Start the GPU training session\n'
+                '  • Watch progress here in real time\n'
+                '  • Download + install the model when done\n\n'
+                'You can close this dialog and keep using the app.\n'
+                'Training takes ~6-12 hours.'):
             return
-        self._tlog(f'☁️ Packaging {name} for Colab...')
+
+        self._train_stop.clear()
+        self._tlog(f'☁️ Starting automated Kaggle training for: {name}')
+
+        def _cb(msg, pct):
+            self._tlog(msg)
+            if pct >= 0:
+                self.root.after(0, lambda p=pct: self._foot_bar.set(p))
+
         def _worker():
-            proc = subprocess.Popen(
-                ['bash', str(script), name],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, cwd=str(script.parent)
-            )
-            for line in proc.stdout:
-                self._tlog(line.rstrip())
-            proc.wait()
-            if proc.returncode == 0:
-                self._tlog('✅ Done! Check your Desktop for the zip, then upload to Drive.')
+            ok, result = kt.train(name, progress_cb=_cb, stop_event=self._train_stop)
+            if ok:
+                self._tlog(f'🎉 Training complete! Model ready in models/{name}/')
+                self.root.after(0, self._refresh_models)
+                self.root.after(0, lambda: messagebox.showinfo('Training Done!',
+                    f'"{name}" trained successfully!\n\n'
+                    'Switch to the Generate tab and select it.'))
             else:
-                self._tlog(f'❌ Packaging failed (exit {proc.returncode})')
+                self._tlog(f'❌ Training failed: {result}')
+                self.root.after(0, lambda e=result: messagebox.showerror('Training Failed', e))
+
         threading.Thread(target=_worker, daemon=True).start()
 
     def _install_model(self):
