@@ -148,9 +148,9 @@ class KaggleTrainer:
 
     def _get_api(self):
         if self._api is None:
-            from kaggle.api.kaggle_api_extended import KaggleApiExtended
-            self._api = KaggleApiExtended()
-            self._api.authenticate()
+            from kaggle import api
+            api.authenticate()
+            self._api = api
         return self._api
 
     @staticmethod
@@ -237,26 +237,28 @@ class KaggleTrainer:
             "kernel_sources": []
         }
         (tmp / 'kernel-metadata.json').write_text(json.dumps(meta))
-        api.kernel_push(str(tmp))
+        api.kernels_push(str(tmp))
         shutil.rmtree(tmp)
 
     def _poll(self, api, username, k_slug, log, stop_event, interval=60) -> bool:
         """Poll Kaggle kernel status until complete/error/cancelled."""
+        from kagglesdk.kernels.types.kernels_api_service import KernelWorkerStatus as _KWS
         start = time.time()
         while True:
             if stop_event and stop_event.is_set():
                 return False
             try:
-                s = api.kernel_status(username, k_slug)
-                status   = getattr(s, 'status',        'unknown')
-                run_time = getattr(s, 'totalRunningTime', None)
-                elapsed  = f'{run_time}s on Kaggle' if run_time else f'{int(time.time()-start)}s local'
+                s = api.kernels_status(f'{username}/{k_slug}')
+                status = getattr(s, 'status', None)
+                status_str = status.name.lower() if hasattr(status, 'name') else str(status)
+                elapsed = f'{int(time.time()-start)}s'
                 pct = min(35 + int((time.time() - start) / 36), 88)  # creep 35→88 over ~18 hrs
-                log(f'   Kaggle status: {status}  ({elapsed})', pct)
-                if status == 'complete':
+                log(f'   Kaggle status: {status_str}  ({elapsed})', pct)
+                if status == _KWS.COMPLETE:
                     return True
-                if status in ('error', 'cancel_acknowledged', 'cancel_requested'):
-                    log(f'❌ Kaggle kernel ended with status: {status}', -1)
+                if status in (_KWS.ERROR, _KWS.CANCEL_ACKNOWLEDGED, _KWS.CANCEL_REQUESTED):
+                    msg = getattr(s, 'failure_message', '') or ''
+                    log(f'❌ Kaggle kernel ended: {status_str} — {msg}', -1)
                     return False
             except Exception as e:
                 log(f'   Poll error (retrying): {e}', -1)
@@ -265,7 +267,7 @@ class KaggleTrainer:
     def _download_and_install(self, api, username, k_slug, model_name: str) -> Path:
         """Download kernel output and install best checkpoint into models/."""
         tmp = Path(tempfile.mkdtemp())
-        api.kernel_output(username, k_slug, path=str(tmp))
+        api.kernels_output(f'{username}/{k_slug}', str(tmp))
 
         # Find best checkpoint in downloaded output
         checkpoints = sorted(

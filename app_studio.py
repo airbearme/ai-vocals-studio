@@ -278,7 +278,7 @@ class NeonBtn(tk.Canvas):
         tc = C['white'] if self._hover else self.color
         for dx,dy in [(2,2),(1,1)]:
             self.create_text(w//2+dx, h//2+dy, text=self.text,
-                             fill='#00000088', font=self.font, anchor='center')
+                             fill='#000000', font=self.font, anchor='center')
         self.create_text(w//2, h//2, text=self.text,
                          fill=tc, font=self.font, anchor='center')
 
@@ -1487,19 +1487,26 @@ class StudioPro:
         if not name:
             messagebox.showwarning('No Model', 'Select a target model first.'); return
 
-        kt = self._get_kaggle_trainer()
-        if kt is None: return   # setup was shown or failed
+        # Ask user: Kaggle (auto) or Colab (manual)?
+        use_kaggle = messagebox.askyesno(
+            '☁️ Free GPU Training',
+            f'Train  "{name}"  on a free cloud GPU.\n\n'
+            'Choose platform:\n\n'
+            '  YES → Kaggle P100 (fully automated, ~8-10 hrs)\n'
+            '        Requires kaggle.json — one-time setup\n\n'
+            '  NO  → Google Colab T4 (opens browser, ~10-12 hrs)\n'
+            '        Upload zip to Drive, click Run All\n',
+            default='yes'
+        )
 
-        if not messagebox.askyesno('☁️ Kaggle GPU Training — FREE',
-                f'Train  "{name}"  on Kaggle (free P100 GPU)?\n\n'
-                'The app will handle everything automatically:\n'
-                '  • Package + upload your training data\n'
-                '  • Start the GPU training session\n'
-                '  • Watch progress here in real time\n'
-                '  • Download + install the model when done\n\n'
-                'You can close this dialog and keep using the app.\n'
-                'Training takes ~6-12 hours.'):
-            return
+        if use_kaggle:
+            self._cloud_train_kaggle(name)
+        else:
+            self._cloud_train_colab(name)
+
+    def _cloud_train_kaggle(self, name: str):
+        kt = self._get_kaggle_trainer()
+        if kt is None: return
 
         self._train_stop.clear()
         self._tlog(f'☁️ Starting automated Kaggle training for: {name}')
@@ -1518,10 +1525,74 @@ class StudioPro:
                     f'"{name}" trained successfully!\n\n'
                     'Switch to the Generate tab and select it.'))
             else:
-                self._tlog(f'❌ Training failed: {result}')
-                self.root.after(0, lambda e=result: messagebox.showerror('Training Failed', e))
+                self._tlog(f'❌ Kaggle failed: {result}')
+                if '401' in str(result) or 'Unauthorized' in str(result):
+                    self._tlog('   → Try Google Colab instead (click ☁️ CLOUD TRAIN → NO)')
+                self.root.after(0, lambda e=result: messagebox.showerror(
+                    'Kaggle Failed',
+                    f'{e}\n\nTry Google Colab instead:\nClick ☁️ CLOUD TRAIN and choose NO.'
+                ))
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    def _cloud_train_colab(self, name: str):
+        """Open browser tabs for Colab training and package the zip."""
+        import shutil as _shutil
+        base = Path(__file__).parent
+        zip_src = base / f'{name}_colab_training.zip'
+
+        # Build zip if missing
+        if not zip_src.exists():
+            self._tlog('📦 Packaging training data for Colab...')
+            try:
+                from kaggle_trainer import KaggleTrainer
+                kt = KaggleTrainer(base)
+                zip_src = kt._package(name)
+                # Copy to base dir for easy access
+                dst = base / f'{name}_colab_training.zip'
+                _shutil.copy(zip_src, dst)
+                zip_src = dst
+            except Exception as exc:
+                self._tlog(f'❌ Packaging failed: {exc}'); return
+
+        # Copy to Desktop for easy upload
+        desktop = Path.home() / 'Desktop'
+        if desktop.exists():
+            try:
+                dst = desktop / zip_src.name
+                _shutil.copy(zip_src, dst)
+                self._tlog(f'📁 Zip copied to Desktop: {dst.name}')
+            except Exception:
+                pass
+
+        zip_gb = zip_src.stat().st_size / 1e9
+        self._tlog(f'📦 Training zip ready: {zip_src.name}  ({zip_gb:.1f} GB)')
+        self._tlog('🌐 Opening Google Drive + Colab in your browser...')
+
+        colab_url = ('https://colab.research.google.com/github/'
+                     'airbearme/ai-vocals-studio/blob/main/colab/train_voice_model.ipynb')
+        drive_url = 'https://drive.google.com/drive/my-drive'
+
+        env = dict(os.environ, DISPLAY=os.environ.get('DISPLAY', ':0'))
+        subprocess.Popen(['xdg-open', drive_url],  stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, env=env)
+        subprocess.Popen(['xdg-open', colab_url], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, env=env)
+
+        messagebox.showinfo('☁️ Colab Training — Steps',
+            f'Zip ready: {zip_src.name}  ({zip_gb:.1f} GB)\n\n'
+            '═══ DO THESE 4 STEPS IN YOUR BROWSER ═══\n\n'
+            '1. UPLOAD the zip to Google Drive\n'
+            '   (browser tab just opened)\n\n'
+            '2. COLAB: Runtime → Change runtime type → T4 GPU\n'
+            '   (second browser tab just opened)\n\n'
+            '3. COLAB: Runtime → Run All  (Ctrl+F9)\n\n'
+            '4. Wait ~10-12 hours — model auto-downloads when done\n\n'
+            '═══ AFTER TRAINING ═══\n'
+            f'Move downloaded G_*.pth + config.json to:\n'
+            f'  models/{name}/\n'
+            'Then click 📥 INSTALL MODEL here to import it.'
+        )
 
     def _install_model(self):
         import shutil
