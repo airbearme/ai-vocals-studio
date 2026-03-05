@@ -3,7 +3,7 @@
 AI Vocals Studio Pro v4.0  — Maximum Effects Edition
 """
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 import os, json, threading, time, math, random, shutil, subprocess, sys, tempfile
 from pathlib import Path
 import numpy as np
@@ -18,7 +18,7 @@ except ImportError:
     HAS_LIBROSA = False
 
 try:
-    from svc_engine import SoVitsEngine, status_label, STATUS_READY
+    from svc_engine import SoVitsEngine, status_label, STATUS_READY, STATUS_UNTRAINED
     HAS_ENGINE = True
 except Exception:
     HAS_ENGINE = False
@@ -131,7 +131,7 @@ class AniCard(tk.Frame):
         self.inner = tk.Frame(self, bg=kw['bg'])
         self.inner.pack(fill='both', expand=True, padx=18, pady=14)
         self._ph = random.uniform(0, math.pi*2)
-        self._tick()
+        self.after(1200 + random.randint(0, 600), self._tick)  # defer
 
     def _tick(self):
         try:
@@ -141,7 +141,7 @@ class AniCard(tk.Frame):
         b = 0.12 + 0.18 * math.sin(self._ph)
         col = blen(self._accent, b)
         self.configure(highlightbackground=col)
-        self.after(70, self._tick)
+        self.after(400, self._tick)
 
 # ═══════════════════════════════════════════════════════════════════
 #  SECTION HEADER  (canvas with pulsing dot + scanning line)
@@ -149,57 +149,31 @@ class AniCard(tk.Frame):
 class SectionHdr(tk.Canvas):
     def __init__(self, parent, text, color, bg=None):
         self._bg = bg or C['bg']
-        super().__init__(parent, height=32, bg=self._bg, highlightthickness=0)
-        self.pack(fill='x', padx=14, pady=(18, 5))
+        super().__init__(parent, height=30, bg=self._bg, highlightthickness=0)
+        self.pack(fill='x', padx=14, pady=(14, 4))
         self._text = text
         self._color = color
-        self._ph = random.uniform(0, math.pi*2)
-        self._sx = 0
         self.bind('<Configure>', lambda _: self._draw())
-        self._tick()
+        self._draw()
 
     def _draw(self):
         self.delete('all')
         w = self.winfo_width() or 900
-        h = 32
-        # Pulsing dot
-        pulse = 0.5 + 0.5*math.sin(self._ph*2.2)
-        for r in (10, 7, 4, 2):
-            a = pulse * 0.06 * (12-r)/10
-            self.create_oval(8-r, h//2-r, 8+r, h//2+r,
-                             fill=blen(self._color, a), outline='')
+        h = 30
+        # Solid dot
         self.create_oval(4, h//2-4, 12, h//2+4,
-                         fill=blen(self._color, 0.5+0.5*pulse), outline='')
+                         fill=blen(self._color, 0.4), outline='')
         self.create_oval(5, h//2-3, 11, h//2+3, fill=self._color, outline='')
-        # Text
+        # Text shadow + text
         tx = 24
         self.create_text(tx+1, h//2+1, text=self._text,
                          fill='#000033', font=FONT['h3'], anchor='w')
         self.create_text(tx, h//2, text=self._text,
                          fill=self._color, font=FONT['h3'], anchor='w')
-        # Line with traveling spark
+        # Divider line
         lx = tx + len(self._text)*8 + 14
         self.create_line(lx, h//2, w-6, h//2,
-                         fill=blen(self._color, 0.2), width=1)
-        # spark
-        if w > lx+10:
-            sx = lx + (self._sx % max(1, w-lx-6))
-            for r in (14, 10, 7, 4, 2):
-                a = 0.35 * (1 - r/16)
-                self.create_line(max(lx, sx-r), h//2,
-                                 min(w-6, sx+r), h//2,
-                                 fill=blen(self._color, a), width=2)
-            self.create_oval(sx-2, h//2-2, sx+2, h//2+2,
-                             fill=self._color, outline='')
-
-    def _tick(self):
-        try:
-            if not self.winfo_exists(): return
-        except tk.TclError: return
-        self._ph += 0.08
-        self._sx  += 5
-        self._draw()
-        self.after(55, self._tick)
+                         fill=blen(self._color, 0.25), width=1)
 
 # ═══════════════════════════════════════════════════════════════════
 #  NEON BUTTON — shimmer + ripple + deep glow
@@ -223,7 +197,7 @@ class NeonBtn(tk.Canvas):
         self.bind('<Enter>',    self._enter)
         self.bind('<Leave>',    self._leave)
         self.bind('<Button-1>', self._click)
-        self._tick()
+        self.after(1000 + random.randint(0, 800), self._tick)  # defer
 
     # ── helpers ──────────────────────────────────────────────
     def _rrect(self, x1,y1,x2,y2,r, **kw):
@@ -320,7 +294,8 @@ class NeonBtn(tk.Canvas):
             if self._rip_a < 0.02: self._rip_r = 0
             changed = True
         if changed: self._draw()
-        self.after(45, self._tick)
+        # idle: check every 600ms; active: animate at 80ms
+        self.after(80 if changed else 600, self._tick)
 
 # ═══════════════════════════════════════════════════════════════════
 #  NEON PROGRESS BAR  (taller, more dramatic)
@@ -335,7 +310,7 @@ class NeonBar(tk.Canvas):
         self.value = 0
         self._sh = 0
         self._draw()
-        self._tick()
+        self.after(900 + random.randint(0, 400), self._tick)  # defer
 
     def set(self, v):
         self.value = max(0, min(100, v))
@@ -379,7 +354,7 @@ class NeonBar(tk.Canvas):
         if 0 < self.value < 100:
             self._sh += 5
             self._draw()
-        self.after(38, self._tick)
+        self.after(150, self._tick)
 
 # ═══════════════════════════════════════════════════════════════════
 #  WAVEFORM  (reflection + glow gradient + richer color)
@@ -395,7 +370,7 @@ class Waveform(tk.Canvas):
         self._bph = 0.0
         self._active = False
         self._idle()
-        self._tick()
+        self.after(800 + random.randint(0, 400), self._tick)  # defer
 
     def _idle(self):
         self.delete('all')
@@ -405,18 +380,23 @@ class Waveform(tk.Canvas):
                          fill=C['dim'], font=FONT['sm'])
 
     def load(self, path):
+        # Run audio decoding in background — librosa can take 30s on large files
+        threading.Thread(target=self._load_bg, args=(str(path),), daemon=True).start()
+
+    def _load_bg(self, path):
         try:
             if HAS_LIBROSA:
-                y, _ = librosa.load(str(path), sr=None, mono=True, duration=10)
+                y, _ = librosa.load(path, sr=None, mono=True, duration=8)
                 n=90; cs=max(1,len(y)//n)
-                self._bars=[float(abs(y[i*cs:(i+1)*cs]).max()) for i in range(n)]
-                mx=max(self._bars) or 1
-                self._bars=[b/mx for b in self._bars]
+                bars=[float(abs(y[i*cs:(i+1)*cs]).max()) for i in range(n)]
+                mx=max(bars) or 1
+                bars=[b/mx for b in bars]
             else:
-                self._bars=[abs(math.sin(i*0.3))*0.6+random.uniform(0.1,0.4) for i in range(90)]
-            self._render()
+                bars=[abs(math.sin(i*0.3))*0.6+random.uniform(0.1,0.4) for i in range(90)]
+            self._bars = bars
+            self.after(0, self._render)
         except Exception:
-            self._idle()
+            self.after(0, self._idle)
 
     def set_active(self, v):
         self._active = v
@@ -483,7 +463,7 @@ class Waveform(tk.Canvas):
             self._ph  += 0.06
             self._bph += 0.08
             self._render()
-        self.after(50, self._tick)
+        self.after(100 if self._active else 600, self._tick)
 
 # ═══════════════════════════════════════════════════════════════════
 #  VU METER  (taller + segment glow)
@@ -496,7 +476,7 @@ class VU(tk.Canvas):
         self.W, self.H = w, h
         self._lv=0.0; self._pk=0.0; self._ph=0
         self._draw()
-        self._tick()
+        self.after(700 + random.randint(0, 300), self._tick)  # defer
 
     def push(self, v):
         self._lv=min(1.0,max(0,v))
@@ -523,12 +503,15 @@ class VU(tk.Canvas):
         try:
             if not self.winfo_exists(): return
         except tk.TclError: return
-        self._lv*=0.86
-        if self._ph>0:
-            self._ph-=1
-            if self._ph==0: self._pk=0
-        self._draw()
-        self.after(42, self._tick)
+        prev = self._lv
+        self._lv *= 0.86
+        if self._ph > 0:
+            self._ph -= 1
+            if self._ph == 0: self._pk = 0
+        active = prev > 0.002 or self._ph > 0
+        if active:
+            self._draw()
+        self.after(120 if active else 500, self._tick)
 
 # ═══════════════════════════════════════════════════════════════════
 #  LAYOUT HELPERS
@@ -580,8 +563,8 @@ class StudioPro:
     def __init__(self, root):
         self.root = root
         self.root.title("AI VOCALS STUDIO PRO  v4.0")
-        self.root.geometry("1680x1000")
-        self.root.minsize(1200, 800)
+        self.root.geometry("1300x720")
+        self.root.minsize(900, 600)
         self.root.configure(bg=C['bg'])
 
         # dirs
@@ -596,8 +579,10 @@ class StudioPro:
         self.audio_path_var  = tk.StringVar()
         self.model_var       = tk.StringVar()
         self.input_type_var  = tk.StringVar(value='text')
-        self.tts_voice_var   = tk.StringVar(value='default')
-        self.tts_speed_var   = tk.StringVar(value='1.0')
+        self.tts_voice_var    = tk.StringVar(value='default')
+        self.tts_speed_var    = tk.StringVar(value='1.0')
+        self._mood_var        = tk.StringVar(value='default')
+        self._custom_ref_path: str | None = None
         self.train_model_var = tk.StringVar()
         self.status_var      = tk.StringVar(value='SYSTEM READY')
         self.last_output     = None
@@ -606,6 +591,9 @@ class StudioPro:
         self._hdr_ph         = 0.0
         self._train_stop     = threading.Event()
         self._engine = SoVitsEngine(self.MODELS, self.DATASET) if HAS_ENGINE else None
+        # RVC v2 engine — lazy, no import at startup
+        from rvc_engine import RvcEngine
+        self._rvc_engine = RvcEngine(self.MODELS)
         self._glitch_text    = None
         self._particles      = self._init_particles()
         self._matrix_cols    = self._init_matrix()
@@ -622,9 +610,18 @@ class StudioPro:
         self._build_outputs()
         self._build_footer()
         self._show('generate')
-        self.root.after(400, self._refresh_models)
-        self.root.after(50,  self._hdr_tick)
-        self.root.after(random.randint(3000,6000), self._trigger_glitch)
+        self.root.after(600,  self._refresh_models)
+        self.root.after(3000, self._hdr_tick)   # defer header anim until window maps
+        self.root.after(random.randint(5000,9000), self._trigger_glitch)
+        
+        # cleanup on close
+        self.root.protocol('WM_DELETE_WINDOW', self._on_close)
+
+    def _on_close(self):
+        """Cleanup resources before closing."""
+        if self._cloud_status_timer:
+            self.root.after_cancel(self._cloud_status_timer)
+        self.root.destroy()
 
     # ─── TTK STYLE ────────────────────────────────────────────────
     def _setup_ttk(self):
@@ -641,24 +638,24 @@ class StudioPro:
 
     # ─── PARTICLES ────────────────────────────────────────────────
     def _init_particles(self):
-        return [{'x': random.uniform(0,1680), 'y': random.uniform(0,160),
+        return [{'x': random.uniform(0,1366), 'y': random.uniform(0,120),
                  'vx': random.uniform(-0.4,0.4), 'vy': random.uniform(-0.3,0.3),
                  'r': random.uniform(1,3),
                  'color': random.choice([C['cyan'],C['purple'],C['green'],C['magenta']]),
                  'a': random.uniform(0.15,0.7),
                  'va': random.uniform(-0.005,0.005)}
-                for _ in range(45)]
+                for _ in range(8)]
 
     def _init_matrix(self):
-        return [{'x': random.randint(0,1680), 'y': random.uniform(0,160),
+        return [{'x': random.randint(0,1366), 'y': random.uniform(0,120),
                  'speed': random.uniform(0.8,2.5),
-                 'chars': [random.choice('0123456789ABCDEF') for _ in range(8)],
+                 'chars': [random.choice('0123456789ABCDEF') for _ in range(3)],
                  'alpha': random.uniform(0.1,0.35)}
-                for _ in range(18)]
+                for _ in range(3)]
 
     # ─── HEADER ───────────────────────────────────────────────────
     def _build_header(self):
-        self._hcv = tk.Canvas(self.root, height=160, bg=C['bg'],
+        self._hcv = tk.Canvas(self.root, height=120, bg=C['bg'],
                                highlightthickness=0)
         self._hcv.pack(fill='x')
 
@@ -668,7 +665,7 @@ class StudioPro:
         except tk.TclError: return
         self._hdr_ph += 0.055
         self._draw_header()
-        self.root.after(42, self._hdr_tick)
+        self.root.after(500, self._hdr_tick)
 
     def _trigger_glitch(self):
         self._glitch_text = True
@@ -677,61 +674,52 @@ class StudioPro:
     def _draw_header(self):
         cv = self._hcv
         cv.delete('all')
-        w = cv.winfo_width() or 1680
-        h = 160
+        w = cv.winfo_width() or 1300
+        h = 120
         ph = self._hdr_ph
 
-        # ── gradient bg ──
-        for y in range(h):
-            t=y/h; rv=int(5+t*18); gv=int(5+t*5); bv=int(15+t*30)
-            cv.create_line(0,y,w,y, fill=f'#{rv:02x}{gv:02x}{bv:02x}')
+        # ── gradient bg (10 bands — fast) ──
+        BANDS = 10
+        for i in range(BANDS):
+            y1 = i * h // BANDS
+            y2 = (i + 1) * h // BANDS
+            t = (i + 0.5) / BANDS
+            rv = int(5 + t*18); gv = int(5 + t*5); bv = int(15 + t*30)
+            cv.create_rectangle(0, y1, w, y2,
+                                fill=f'#{rv:02x}{gv:02x}{bv:02x}', outline='')
 
-        # ── matrix columns ──
+        # ── matrix columns (6 cols, sparse) ──
         for mc in self._matrix_cols:
-            mc['y'] = (mc['y'] + mc['speed']) % (h+40)
-            x = mc['x']
-            for j,ch in enumerate(mc['chars']):
-                y_ = mc['y'] - j*14
+            mc['y'] = (mc['y'] + mc['speed']) % (h + 30)
+            x = mc['x'] % w
+            for j, ch in enumerate(mc['chars']):
+                y_ = mc['y'] - j * 14
                 if 0 <= y_ <= h:
-                    a = mc['alpha'] * (1 - j/len(mc['chars']))
-                    col = blen(C['green'], a)
-                    cv.create_text(x, y_, text=ch, fill=col,
+                    a = mc['alpha'] * (1 - j / len(mc['chars']))
+                    cv.create_text(x, y_, text=ch,
+                                   fill=blen(C['green'], a),
                                    font=('Courier New', 9, 'bold'), anchor='center')
 
-        # ── 3 wave layers ──
-        wave_defs = [
-            (C['cyan'],    0.40, 12, 4,   ph*1.0),
-            (C['purple'],  0.28, 18, 2.5, ph*1.4 + 1.0),
-            (C['magenta'], 0.18, 8,  3,   ph*0.7 + 2.5),
-        ]
-        for col, a_base, freq, amp, offset in wave_defs:
-            pts = []
-            for x in range(0, w+2, 3):
-                wave = math.sin(x/w*freq*math.pi + offset)*amp \
-                     + math.sin(x/w*freq*0.6*math.pi + offset*1.3)*amp*0.4
-                y_ = h - 6 + wave
-                pts.extend([x, y_])
-            if len(pts) >= 4:
-                for i in range(3):
-                    a = a_base * (1 - i*0.3)
-                    cv.create_line(pts, fill=blen(col, a), width=2-i*0.5,
-                                   smooth=True)
+        # ── 1 wave layer (step=10 — fewer points) ──
+        pts = []
+        for x in range(0, w + 2, 10):
+            wave = math.sin(x / w * 12 * math.pi + ph) * 4
+            pts.extend([x, h - 6 + wave])
+        if len(pts) >= 4:
+            cv.create_line(pts, fill=blen(C['cyan'], 0.40), width=2, smooth=True)
 
-        # ── particles ──
+        # ── particles (15) ──
         for p in self._particles:
-            p['x']  = (p['x']+p['vx']) % w
-            p['y']  = (p['y']+p['vy']) % h
-            p['a']  = max(0.05, min(0.8, p['a']+p['va']))
+            p['x'] = (p['x'] + p['vx']) % w
+            p['y'] = (p['y'] + p['vy']) % h
+            p['a'] = max(0.05, min(0.8, p['a'] + p['va']))
             r = p['r']
             cv.create_oval(p['x']-r, p['y']-r, p['x']+r, p['y']+r,
                            fill=blen(p['color'], p['a']), outline='')
 
-        # ── scan line ──
-        scan_y = (ph * 18) % h
-        for i in range(6, 0, -1):
-            a = 0.2 * (1-i/7)
-            cv.create_line(0, scan_y-i, w, scan_y-i, fill=blen(C['cyan'], a))
-        cv.create_line(0, scan_y, w, scan_y, fill=blen(C['cyan'], 0.35), width=1)
+        # ── scan line (single) ──
+        scan_y = int((ph * 18) % h)
+        cv.create_line(0, scan_y, w, scan_y, fill=blen(C['cyan'], 0.25), width=1)
 
         # ── title shadows + text ──
         title = self._glitch_text and self._make_glitch('🎤  AI VOCALS STUDIO PRO') \
@@ -852,9 +840,16 @@ class StudioPro:
         self._text_box.bind('<FocusIn>', self._clr_ph)
         tr = tk.Frame(tc, bg=C['card2'])
         tr.pack(fill='x', pady=6)
-        lbl(tr,'VOICE:',  side='left', padx=(0,8))
-        combo(tr, self.tts_voice_var, ['default','male','female','robot'], 14)
-        lbl(tr,'SPEED:',  side='left', padx=(6,8))
+        lbl(tr,'MOOD:', side='left', padx=(0,8))
+        for _mk, _ml in [('default','🎤 Default'), ('aggressive','😤 Aggressive'),
+                          ('storytelling','📖 Story'), ('emotional','💔 Emotional')]:
+            tk.Radiobutton(tr, text=_ml, variable=self._mood_var, value=_mk,
+                           fg=C['cyan'], bg=C['card2'], selectcolor=C['bg3'],
+                           activeforeground=C['white'], activebackground=C['card2'],
+                           font=FONT['sm']).pack(side='left', padx=6, pady=4)
+        NeonBtn(tr,'📎 Custom…', cmd=self._pick_custom_ref,
+                color=C['dim'], w=110, h=32).pack(side='left', padx=(8,0))
+        lbl(tr,'SPEED:', side='left', padx=(12,8))
         combo(tr, self.tts_speed_var, ['0.6','0.8','0.9','1.0','1.1','1.2','1.5'], 10)
 
         # audio section
@@ -886,6 +881,13 @@ class StudioPro:
         # FX
         SectionHdr(f,'VOICE EFFECTS', C['orange'])
         fx = mk_card(f, C['orange'])
+        _er = tk.Frame(fx, bg=C['card2'])
+        _er.pack(anchor='w', pady=(0,4), fill='x')
+        self._engine_badge = tk.Label(_er, text='ENGINE: 🔄 Detecting…',
+                                      fg=C['gray'], bg=C['card2'], font=FONT['sm'])
+        self._engine_badge.pack(side='left')
+        NeonBtn(_er, '🔑 EL Key', cmd=self._setup_el_key,
+                color=C['gold'], w=100, h=28).pack(side='left', padx=(14,0))
         fxg = tk.Frame(fx, bg=C['card2'])
         fxg.pack(fill='x', pady=8)
         self._fx = {}
@@ -1010,6 +1012,27 @@ class StudioPro:
                  fg=C['dim'], bg=C['card2'], font=FONT['xs'], wraplength=900, justify='left'
                  ).pack(anchor='w', pady=(0,6))
         self._train_log = textbox(tc, height=14, color=C['purple'])
+
+        # ── CLOUD TRAINING STATUS MONITOR ───────────────────────────────
+        SectionHdr(f,'☁️ CLOUD TRAINING STATUS', C['cyan'])
+        self._cloud_status_card = mk_card(f, C['cyan'])
+        self._cloud_status_lbl = tk.Label(self._cloud_status_card,
+            text='No active cloud training.\nClick ☁️ CLOUD TRAIN to start training on Kaggle or Google Colab.',
+            fg=C['gray'], bg=C['card2'], font=FONT['body'], justify='left',
+            wraplength=900)
+        self._cloud_status_lbl.pack(anchor='w', pady=10)
+        
+        # Refresh button for status
+        btn_row = tk.Frame(self._cloud_status_card, bg=C['card2'])
+        btn_row.pack(anchor='w', pady=(0,10))
+        NeonBtn(btn_row, '🔄 REFRESH STATUS', cmd=self._refresh_cloud_status,
+                color=C['cyan'], w=180, h=36).pack(side='left', padx=(0,10))
+        NeonBtn(btn_row, '📋 COPY LOG PATH', cmd=self._copy_log_path,
+                color=C['dim'], w=160, h=36).pack(side='left')
+        
+        # Start auto-refresh timer
+        self._cloud_status_timer = None
+        self._start_cloud_status_refresh()
 
         self._refresh_ds()
 
@@ -1164,9 +1187,8 @@ class StudioPro:
             name=self.model_var.get(); mode=self.input_type_var.get()
             if mode=='text':
                 txt=self._text_box.get('1.0','end-1c').strip()
-                self._prog('🔤 Running TTS…',20)
-                tmp=self._tts(txt)
-                self._log(f'📝 TTS done: {len(txt)} chars')
+                mood=self._mood_var.get()
+                tmp=self._synth_text(txt, name, mood)
             else:
                 tmp=self.audio_path_var.get()
                 self._log(f'🎵 Audio: {Path(tmp).name}')
@@ -1177,10 +1199,22 @@ class StudioPro:
             out_name=f'{base}_{name}_{ts}.wav'
             out=od/out_name
 
-            # ── SO-VITS path ───────────────────────────────────────
-            if self._engine and self._engine.can_infer(name):
+            # ── RVC v2 path (best for audio-to-audio) ─────────────
+            pitch = int(self._fx['pitch'].get())
+            if self._rvc_engine and self._rvc_engine.can_infer(name):
+                self._log(f'🟣 RVC v2 inference: {name}')
+                self._badge('ENGINE: 🎵 RVC v2', C['purple'])
+                ok, err = self._rvc_engine.convert(
+                    name, tmp, str(out),
+                    pitch_shift=pitch,
+                    progress_cb=self._prog,
+                )
+                if not ok:
+                    raise RuntimeError(f'RVC v2: {err}')
+            # ── SO-VITS fallback ───────────────────────────────────
+            elif self._engine and self._engine.can_infer(name):
                 self._log(f'🟢 SO-VITS inference: {name}')
-                pitch=int(self._fx['pitch'].get())
+                self._badge('ENGINE: 🔄 SO-VITS', C['cyan'])
                 ok, err = self._engine.convert(
                     name, tmp, str(out),
                     pitch_shift=pitch,
@@ -1191,7 +1225,8 @@ class StudioPro:
                     raise RuntimeError(f'SO-VITS: {err}')
             else:
                 # ── DSP fallback ───────────────────────────────────
-                self._log('🟡 DSP fallback (no trained SO-VITS model)')
+                self._log('🟡 DSP fallback (no trained model)')
+                self._badge('ENGINE: 🎛️ DSP Fallback', C['orange'])
                 self._prog('🎵 Loading audio…',38)
                 audio=AudioSegment.from_file(tmp).normalize()
                 self._prog('✨ Applying voice profile…',58)
@@ -1239,6 +1274,100 @@ class StudioPro:
         wav=mp3.replace('.mp3','.wav')
         seg.export(wav,format='wav',parameters=['-ar','44100'])
         return wav
+
+    def _synth_text(self, text: str, model_name: str, mood: str) -> str:
+        """
+        Generate speech for text input.
+        Priority: ElevenLabs → XTTS v2 → gTTS (DSP fallback).
+        Returns temp WAV path.
+        """
+        base_dir = str(self.MODELS.parent.resolve())
+
+        # ── 1. ElevenLabs (best quality, requires API key) ────────
+        try:
+            from elevenlabs_engine import ElevenLabsEngine
+            el = ElevenLabsEngine(base_dir)
+            if el.can_synthesize():
+                self._badge('ENGINE: ⚡ ElevenLabs', C['gold'])
+                self._prog('⚡ ElevenLabs synthesizing…', 15)
+                out = el.synthesize(text, model_name, mood=mood, progress_cb=self._prog)
+                self._log(f'⚡ ElevenLabs done: {len(text)} chars, mood={mood}')
+                return str(out)
+        except Exception as e:
+            self._log(f'ℹ️ ElevenLabs: {type(e).__name__}: {e}')
+
+        # ── 2. XTTS v2 (free, local) ──────────────────────────────
+        try:
+            from xtts_engine import XttsEngine
+            xe = XttsEngine(base_dir)
+            if xe.can_synthesize():
+                self._badge('ENGINE: ⚡ XTTS Clone', C['green'])
+                self._prog('⚡ XTTS v2 synthesizing…', 20)
+                out = xe.synthesize(
+                    text, model_name,
+                    mood=mood,
+                    custom_ref=self._custom_ref_path,
+                    progress_cb=self._prog,
+                )
+                self._log(f'⚡ XTTS done: {len(text)} chars, mood={mood}')
+                return str(out)
+        except Exception as e:
+            self._log(f'ℹ️ XTTS: {type(e).__name__}: {e}')
+
+        # ── 3. gTTS fallback ──────────────────────────────────────
+        self._badge('ENGINE: 🎛️ DSP Fallback', C['orange'])
+        self._prog('🔤 Running gTTS…', 20)
+        tmp = self._tts(text)
+        self._log(f'📝 gTTS done: {len(text)} chars')
+        return tmp
+
+    def _pick_custom_ref(self):
+        """Open a file picker to choose a custom XTTS reference audio clip."""
+        path = filedialog.askopenfilename(
+            title='Select Reference Audio for XTTS',
+            filetypes=[('Audio', '*.wav *.mp3 *.flac *.ogg'), ('All files', '*.*')],
+        )
+        if path:
+            self._custom_ref_path = path
+            self._log(f'📎 Custom ref set: {Path(path).name}')
+            self._badge('ENGINE: ⚡ XTTS (custom ref)', C['green'])
+
+    def _badge(self, text: str, color: str):
+        """Thread-safe update of the engine badge label."""
+        try:
+            self.root.after(0, lambda t=text, c=color: self._engine_badge.config(text=t, fg=c))
+        except Exception:
+            pass
+
+    def _setup_el_key(self):
+        """Dialog to save ElevenLabs API key to .cloud_config."""
+        cfg = Path('.cloud_config')
+        cur = ''
+        if cfg.exists():
+            for line in cfg.read_text().splitlines():
+                if line.startswith('ELEVENLABS_API_KEY='):
+                    cur = line.split('=', 1)[1].strip().strip('"').strip("'")
+                    break
+        # Show masked hint if key already exists
+        hint = (cur[:8] + '…') if len(cur) > 8 else cur
+        key = simpledialog.askstring(
+            'ElevenLabs API Key',
+            f'Paste your ElevenLabs API key.\n'
+            f'Saved to .cloud_config (git-ignored).\n\n'
+            f'Get key → elevenlabs.io/app → Profile → API Keys\n\n'
+            f'Current: {hint or "(none)"}',
+            parent=self.root,
+        )
+        if not key or not key.strip() or key.strip().endswith('…'):
+            return
+        key = key.strip()
+        # Update .cloud_config
+        lines = cfg.read_text().splitlines() if cfg.exists() else []
+        new_lines = [l for l in lines if not l.startswith('ELEVENLABS_API_KEY=')]
+        new_lines.append(f'ELEVENLABS_API_KEY={key}')
+        cfg.write_text('\n'.join(new_lines) + '\n')
+        self._log('✅ ElevenLabs API key saved to .cloud_config')
+        self._badge('ENGINE: ⚡ ElevenLabs (key saved — generate to test)', C['gold'])
 
     def _transform(self, audio, persona):
         pitch=persona.get('pitch',0); speed=persona.get('speed',1.0)
@@ -1334,7 +1463,7 @@ class StudioPro:
         tk.Label(info,text=meta,fg=C['gray'],bg=C['card2'],font=FONT['sm']).pack(anchor='w')
         if self._engine:
             badge = status_label(self._engine.model_status(name))
-            badge_color = C['green'] if 'READY' in badge else C['orange'] if 'PLACEHOLDER' in badge or 'MISSING config' in badge else C['red']
+            badge_color = C['green'] if 'READY' in badge else C['orange'] if 'PLACEHOLDER' in badge or 'MISSING config' in badge or 'UNTRAINED' in badge else C['red']
         else:
             badge = '⚪ DSP MODE (svc_engine unavailable)'
             badge_color = C['dim']
@@ -1487,22 +1616,110 @@ class StudioPro:
         if not name:
             messagebox.showwarning('No Model', 'Select a target model first.'); return
 
-        # Ask user: Kaggle (auto) or Colab (manual)?
-        use_kaggle = messagebox.askyesno(
-            '☁️ Free GPU Training',
-            f'Train  "{name}"  on a free cloud GPU.\n\n'
-            'Choose platform:\n\n'
-            '  YES → Kaggle P100 (fully automated, ~8-10 hrs)\n'
-            '        Requires kaggle.json — one-time setup\n\n'
-            '  NO  → Google Colab T4 (opens browser, ~10-12 hrs)\n'
-            '        Upload zip to Drive, click Run All\n',
-            default='yes'
-        )
+        # Create custom dialog with both options
+        dlg = tk.Toplevel(self.root)
+        dlg.title('☁️ Auto Cloud Training')
+        dlg.configure(bg=C['bg2'])
+        dlg.geometry('500x420')
+        dlg.transient(self.root)
+        dlg.grab_set()
+        
+        tk.Label(dlg, text='☁️  AUTO CLOUD TRAINING', fg=C['cyan'],
+                bg=C['bg2'], font=FONT['h2']).pack(pady=(20,10))
+        
+        tk.Label(dlg, 
+                text=f'Train "{name}" automatically on free GPU:\n\n'
+                     'Both methods prepare the zip and handle setup.',
+                fg=C['white'], bg=C['bg2'], font=FONT['body'], 
+                wraplength=450, justify='center').pack(pady=10)
+        
+        # Kaggle option
+        kf = tk.Frame(dlg, bg=C['card2'], padx=20, pady=15)
+        kf.pack(fill='x', padx=20, pady=10)
+        tk.Label(kf, text='🚀 KAGGLE P100', fg=C['green'], 
+                bg=C['card2'], font=FONT['h3']).pack(anchor='w')
+        tk.Label(kf, text='Fully automated\n~8-10 hours\nRequires kaggle.json setup',
+                fg=C['gray'], bg=C['card2'], font=FONT['sm'], 
+                justify='left').pack(anchor='w', pady=(5,0))
+        
+        def start_kaggle():
+            dlg.destroy()
+            self._start_auto_train(name, 'kaggle')
+        
+        NeonBtn(kf, 'START KAGGLE', cmd=start_kaggle,
+               color=C['green'], w=160, h=36).pack(anchor='e', pady=(5,0))
+        
+        # Colab option
+        cf = tk.Frame(dlg, bg=C['card2'], padx=20, pady=15)
+        cf.pack(fill='x', padx=20, pady=10)
+        tk.Label(cf, text='🌐 GOOGLE COLAB T4', fg=C['purple'], 
+                bg=C['card2'], font=FONT['h3']).pack(anchor='w')
+        tk.Label(cf, text='Auto-opens browser, manual upload\n~10-12 hours\nMost reliable',
+                fg=C['gray'], bg=C['card2'], font=FONT['sm'], 
+                justify='left').pack(anchor='w', pady=(5,0))
+        
+        def start_colab():
+            dlg.destroy()
+            self._start_auto_train(name, 'colab')
+        
+        NeonBtn(cf, 'START COLAB', cmd=start_colab,
+               color=C['purple'], w=160, h=36).pack(anchor='e', pady=(5,0))
+        
+        # Cancel button
+        tk.Label(dlg, text='Training runs in background. You can close the app.',
+                fg=C['dim'], bg=C['bg2'], font=FONT['xs']).pack(pady=(15,5))
+        
+        NeonBtn(dlg, 'CANCEL', cmd=dlg.destroy,
+               color=C['red'], w=100, h=32).pack(pady=5)
 
-        if use_kaggle:
-            self._cloud_train_kaggle(name)
-        else:
-            self._cloud_train_colab(name)
+    def _start_auto_train(self, model_name, method):
+        """Start automated training with the unified trainer."""
+        self._train_stop.clear()
+        self._tlog(f'☁️ Starting {method.upper()} auto-training for: {model_name}')
+        
+        def progress_cb(msg, pct):
+            self._tlog(msg)
+            if pct >= 0:
+                self.root.after(0, lambda p=pct: self._foot_bar.set(p))
+        
+        def worker():
+            try:
+                # Import and run auto trainer
+                sys.path.insert(0, str(Path(__file__).parent))
+                from auto_train import AutoTrainer
+                
+                trainer = AutoTrainer(model_name)
+                trainer.set_progress_callback(progress_cb)
+                
+                if method == 'kaggle':
+                    ok, result = trainer.train_kaggle(stop_event=self._train_stop)
+                else:
+                    ok, result = trainer.train_colab()
+                
+                if ok:
+                    if result == 'colab_started':
+                        self._tlog('🌐 Colab opened in browser')
+                        self._tlog('   Upload the zip from Desktop when prompted')
+                        self.root.after(0, lambda: self._foot_bar.set(25))
+                    else:
+                        self._tlog(f'🎉 Training complete! Model: {result}')
+                        self.root.after(0, self._refresh_models)
+                        self.root.after(0, lambda: messagebox.showinfo(
+                            'Training Complete!', 
+                            f'Model trained successfully!\n\nSaved to: {result}'))
+                else:
+                    self._tlog(f'❌ Training failed: {result}')
+                    if '401' in str(result) or 'Unauthorized' in str(result):
+                        self._tlog('   → Try Google Colab instead (more reliable)')
+                    self.root.after(0, lambda e=result: messagebox.showerror(
+                        'Training Failed', str(e)[:500]))
+                    
+            except Exception as e:
+                self._tlog(f'❌ Error: {e}')
+                import traceback
+                self._tlog(traceback.format_exc()[:500])
+        
+        threading.Thread(target=worker, daemon=True).start()
 
     def _cloud_train_kaggle(self, name: str):
         kt = self._get_kaggle_trainer()
@@ -1570,7 +1787,7 @@ class StudioPro:
         self._tlog('🌐 Opening Google Drive + Colab in your browser...')
 
         colab_url = ('https://colab.research.google.com/github/'
-                     'airbearme/ai-vocals-studio/blob/main/colab/train_voice_model.ipynb')
+                     'airbearme/ai-vocals-studio/blob/main/colab/Pacaveli_Training.ipynb')
         drive_url = 'https://drive.google.com/drive/my-drive'
 
         env = dict(os.environ, DISPLAY=os.environ.get('DISPLAY', ':0'))
@@ -1580,18 +1797,17 @@ class StudioPro:
                          stderr=subprocess.DEVNULL, env=env)
 
         messagebox.showinfo('☁️ Colab Training — Steps',
-            f'Zip ready: {zip_src.name}  ({zip_gb:.1f} GB)\n\n'
-            '═══ DO THESE 4 STEPS IN YOUR BROWSER ═══\n\n'
-            '1. UPLOAD the zip to Google Drive\n'
-            '   (browser tab just opened)\n\n'
-            '2. COLAB: Runtime → Change runtime type → T4 GPU\n'
-            '   (second browser tab just opened)\n\n'
-            '3. COLAB: Runtime → Run All  (Ctrl+F9)\n\n'
-            '4. Wait ~10-12 hours — model auto-downloads when done\n\n'
+            f'Zip ready on Desktop: {zip_src.name}  ({zip_gb:.1f} GB)\n\n'
+            '═══ DO THESE STEPS IN YOUR BROWSER ═══\n\n'
+            '1. COLAB tab: Runtime → Change runtime type → T4 GPU → Save\n\n'
+            '2. COLAB: Run Cell 1 (GPU check) and Cell 2 (install deps)\n\n'
+            '3. COLAB Cell 4: click ▶ and upload the zip from your Desktop\n'
+            f'   File: {zip_src.name}\n\n'
+            '4. COLAB: Run all remaining cells (Ctrl+F9)\n\n'
+            '5. Training runs 6-12 hours.  Model auto-downloads when done.\n\n'
             '═══ AFTER TRAINING ═══\n'
-            f'Move downloaded G_*.pth + config.json to:\n'
-            f'  models/{name}/\n'
-            'Then click 📥 INSTALL MODEL here to import it.'
+            'Click 📥 INSTALL MODEL here and select the downloaded G_*.pth.\n'
+            'config.json from the same folder is auto-imported.'
         )
 
     def _install_model(self):
@@ -1604,7 +1820,7 @@ class StudioPro:
         if not pth:
             return
         if not name:
-            name = tk.simpledialog.askstring('Model Name',
+            name = simpledialog.askstring('Model Name',
                 'Install into which model?\n(leave blank to use file name)',
                 parent=self.root) or ''
             name = name.strip().replace(' ', '_')
@@ -1621,6 +1837,162 @@ class StudioPro:
         self.root.after(0, self._refresh_models)
         messagebox.showinfo('Model Installed',
             f'Trained model installed to models/{name}/\n\nSwitch to the Generate tab and select it!')
+
+    def _run_manual_training(self):
+        """Run the manual training script in a terminal."""
+        import subprocess
+        script = Path(__file__).parent / 'train_manual.sh'
+        if not script.exists():
+            messagebox.showerror('Script Not Found', 'train_manual.sh not found!')
+            return
+        
+        # Open terminal and run the script
+        try:
+            # Try different terminal emulators
+            term_cmds = [
+                ['xterm', '-e', f'cd "{script.parent}" && bash "{script}"'],
+                ['lxterminal', '-e', f'cd "{script.parent}" && bash "{script}"'],
+                ['qterminal', '-e', f'cd "{script.parent}" && bash "{script}"'],
+                ['konsole', '-e', f'cd "{script.parent}" && bash "{script}"'],
+                ['gnome-terminal', '--', 'bash', '-c', f'cd "{script.parent}" && bash "{script}"'],
+                ['xfce4-terminal', '-e', f'cd "{script.parent}" && bash "{script}"'],
+            ]
+            
+            for cmd in term_cmds:
+                try:
+                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self._tlog('🖥️  Manual training script launched in terminal')
+                    return
+                except FileNotFoundError:
+                    continue
+            
+            # Fallback: just run in background
+            subprocess.Popen(['bash', str(script)], cwd=str(script.parent))
+            self._tlog('🖥️  Manual training script started')
+            
+        except Exception as e:
+            messagebox.showerror('Error', f'Failed to start script: {e}')
+
+    # ── CLOUD TRAINING STATUS MONITOR ─────────────────────────────────
+
+    def _start_cloud_status_refresh(self):
+        """Start auto-refreshing cloud training status every 30 seconds."""
+        self._refresh_cloud_status()
+        self._cloud_status_timer = self.root.after(30000, self._start_cloud_status_refresh)
+
+    def _refresh_cloud_status(self):
+        """Read the most recent cloud training log and update status display."""
+        base = Path(__file__).parent
+        candidates = [
+            base / 'kaggle_training.log',
+            base / 'training.log',
+            base / 'training_watch.log',
+        ]
+        # Use most recently modified log file that exists
+        existing = [(p.stat().st_mtime, p) for p in candidates if p.exists()]
+        if not existing:
+            status_text = 'No active cloud training.\nClick ☁️ CLOUD TRAIN to start training on Kaggle or Google Colab.'
+            self._cloud_status_lbl.config(fg=C['gray'], text=status_text)
+            return
+        _, log_file = max(existing)
+        
+        try:
+            with open(log_file, 'r') as f:
+                lines = f.readlines()
+            
+            if not lines:
+                status_text = 'Log file exists but is empty.\nTraining may be starting...'
+                self._cloud_status_lbl.config(fg=C['orange'], text=status_text)
+                return
+            
+            # Get last 15 lines for context
+            recent_lines = lines[-15:]
+            
+            # Determine status
+            full_log = ''.join(lines)
+            
+            if 'TRAINING COMPLETE' in full_log or '✅ TRAINING COMPLETE' in full_log:
+                status_color = C['green']
+                status_text = '🎉 TRAINING COMPLETE!\n\n'
+                for line in reversed(lines):
+                    if 'Model saved to:' in line or 'models/' in line:
+                        status_text += f'Model: {line.strip()}\n'
+                        break
+                status_text += '\nClick 📥 INSTALL MODEL to import the trained model.'
+
+            elif ('max_retries' in full_log or 'Max retries' in full_log or
+                  'disk space' in full_log.lower() or 'KernelWorkerStatus.ERROR' in full_log):
+                status_color = C['red']
+                status_text = '❌ KAGGLE TRAINING FAILED\n\n'
+                if 'disk space' in full_log.lower():
+                    status_text += 'Cause: Kaggle ran out of disk space.\nFixed — click ☁️ CLOUD TRAIN to retry.\n'
+                elif 'max_retries' in full_log or 'Max retries' in full_log:
+                    status_text += 'Watcher hit max retries (10).\n'
+                    for line in reversed(lines):
+                        if 'error' in line.lower() or 'Error' in line:
+                            status_text += f'{line.strip()}\n'; break
+                status_text += '\nClick ☁️ CLOUD TRAIN → Kaggle to restart, or use Colab.'
+
+            elif 'TRAINING FAILED' in full_log or '❌ TRAINING FAILED' in full_log:
+                status_color = C['red']
+                status_text = '❌ TRAINING FAILED\n\n'
+                for line in reversed(lines):
+                    if 'Error:' in line:
+                        status_text += f'Error: {line.split("Error:", 1)[-1].strip()}\n'
+                        break
+                status_text += '\nClick ☁️ CLOUD TRAIN to try again or use Google Colab instead.'
+
+            elif '⬆' in full_log or 'Uploading' in full_log:
+                status_color = C['cyan']
+                status_text = '⬆️ UPLOADING TO KAGGLE\n\n'
+                for line in reversed(recent_lines):
+                    if '%' in line or 'Zip:' in line:
+                        status_text += f'Latest: {line.strip()}\n'
+                        break
+                status_text += '\nUploading training data to Kaggle (this may take 10-30 min for large datasets)...'
+
+            elif 'Kaggle status:' in full_log or 'running' in full_log:
+                status_color = C['cyan']
+                status_text = '🚀 TRAINING ON KAGGLE GPU\n\n'
+                for line in reversed(recent_lines):
+                    if 'running' in line or 'elapsed' in line or 'Kaggle status:' in line:
+                        status_text += f'{line.strip()}\n'
+                        break
+                status_text += '\nTraining in progress on Kaggle P100 GPU. This takes ~8-10 hours.'
+                status_text += '\nYou can close this app — training runs in the cloud.'
+                
+            elif 'Packaging' in full_log or '📦' in full_log:
+                status_color = C['orange']
+                status_text = '📦 PACKAGING TRAINING DATA\n\n'
+                for line in reversed(recent_lines):
+                    if 'Zip:' in line or 'MB' in line:
+                        status_text += f'{line.strip()}\n'
+                        break
+                status_text += '\nCompressing training data. This may take several minutes for large datasets...'
+                
+            else:
+                status_color = C['gray']
+                status_text = '⏳ INITIALIZING...\n\n'
+                status_text += 'Latest log entries:\n'
+                for line in recent_lines[-5:]:
+                    status_text += f'  {line.strip()}\n'
+            
+            self._cloud_status_lbl.config(fg=status_color, text=status_text)
+            
+        except Exception as e:
+            self._cloud_status_lbl.config(fg=C['red'], text=f'Error reading status: {e}')
+
+    def _copy_log_path(self):
+        """Copy the most recent log file path to clipboard."""
+        base = Path(__file__).parent
+        candidates = [base / 'kaggle_training.log', base / 'training.log', base / 'training_watch.log']
+        existing = [(p.stat().st_mtime, p) for p in candidates if p.exists()]
+        log_file = max(existing)[1] if existing else (base / 'kaggle_training.log')
+        path_str = str(log_file)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(path_str)
+        self.root.update()
+        messagebox.showinfo('Copied', f'Log path copied to clipboard:\n{path_str}')
 
     def _new_model_dlg(self):
         dlg=tk.Toplevel(self.root); dlg.title('New Model')

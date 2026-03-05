@@ -1,0 +1,6 @@
+{
+  "default":      ["speaker_0001.wav", "speaker_0002.wav"],
+  "aggressive":   ["speaker_0003.wav", "speaker_0004.wav"],
+  "storytelling": ["speaker_0002.wav", "speaker_0005.wav"],
+  "emotional":    ["speaker_0001.wav", "speaker_0005.wav"]
+}

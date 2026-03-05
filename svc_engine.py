@@ -21,17 +21,44 @@ try:
 except ImportError:
     HAS_LIBROSA = False
 
-try:
-    from so_vits_svc_fork.inference.core import Svc
-    import torch
-    HAS_SOVITS = True
-except Exception:
-    HAS_SOVITS = False
+# SO-VITS is imported ON DEMAND the first time load() is called.
+# This keeps app startup fast — the window opens in ~5s, then SO-VITS
+# loads in the background the first time the user generates with a real model.
+HAS_SOVITS: bool = False
+Svc = None        # set by _ensure_sovits()
+torch = None      # set by _ensure_sovits()
+_sovits_ready = threading.Event()   # set when import finishes (success or fail)
+_sovits_loading = threading.Lock()  # prevents double-import
+
+def _ensure_sovits(progress_cb: '_ProgressCB | None' = None) -> bool:
+    """Import SO-VITS on first call.  Thread-safe.  Returns True if available."""
+    global HAS_SOVITS, Svc, torch
+    if _sovits_ready.is_set():
+        return HAS_SOVITS
+    if not _sovits_loading.acquire(blocking=False):
+        # Another thread is already importing — wait for it
+        _sovits_ready.wait(timeout=120)
+        return HAS_SOVITS
+    try:
+        if progress_cb:
+            progress_cb('Loading SO-VITS engine (first use — ~30s)…', 5)
+        from so_vits_svc_fork.inference.core import Svc as _Svc
+        import torch as _torch
+        Svc = _Svc
+        torch = _torch
+        HAS_SOVITS = True
+    except Exception:
+        HAS_SOVITS = False
+    finally:
+        _sovits_ready.set()
+        _sovits_loading.release()
+    return HAS_SOVITS
 
 # ─────────────────────────────────────────────────────────────────
 #  Model status constants
 # ─────────────────────────────────────────────────────────────────
-STATUS_READY       = 'ready'    # real model + config present → SO-VITS
+STATUS_READY       = 'ready'    # trained model (epoch > 0) + config present → SO-VITS
+STATUS_UNTRAINED   = 'untrained'  # G_0.pth or model.pth (epoch 0, base weights)
 STATUS_PLACEHOLDER = 'placeholder'  # model dir exists but .pth is 0-byte
 STATUS_MISSING     = 'missing'  # no .pth file at all
 STATUS_NO_CONFIG   = 'no_config'  # real .pth but missing config.json
@@ -89,7 +116,7 @@ class SoVitsEngine:
 
     def model_status(self, model_name: str) -> str:
         """
-        Returns STATUS_READY / STATUS_NO_CONFIG / STATUS_PLACEHOLDER / STATUS_MISSING
+        Returns STATUS_READY / STATUS_UNTRAINED / STATUS_NO_CONFIG / STATUS_PLACEHOLDER / STATUS_MISSING
         """
         model_dir = self.MODELS / model_name
         if not model_dir.is_dir():
@@ -108,6 +135,11 @@ class SoVitsEngine:
         cfg = model_dir / 'config.json'
         if not cfg.exists():
             return STATUS_NO_CONFIG
+
+        # Check if actually trained (epoch > 0) or just base model (G_0.pth)
+        epoch = _epoch_from_name(pth.stem)
+        if epoch == 0:
+            return STATUS_UNTRAINED
 
         return STATUS_READY
 
@@ -138,13 +170,14 @@ class SoVitsEngine:
 
     # ── Load ─────────────────────────────────────────────────────
 
-    def load(self, model_name: str, device: str | None = None) -> tuple[bool, str]:
+    def load(self, model_name: str, device: str | None = None,
+             progress_cb: '_ProgressCB | None' = None) -> tuple[bool, str]:
         """
         Load SO-VITS model into memory.
         Returns (success, message).
         """
-        if not HAS_SOVITS:
-            return False, 'so-vits-svc-fork not installed'
+        if not _ensure_sovits(progress_cb):
+            return False, 'so-vits-svc-fork not available'
 
         status = self.model_status(model_name)
         if status != STATUS_READY:
@@ -159,7 +192,7 @@ class SoVitsEngine:
         cfg = model_dir / 'config.json'
 
         if device is None:
-            device = 'cuda' if (HAS_SOVITS and torch.cuda.is_available()) else 'cpu'
+            device = 'cuda' if (torch is not None and torch.cuda.is_available()) else 'cpu'
 
         try:
             with self._lock:
@@ -198,9 +231,9 @@ class SoVitsEngine:
         """
         cb = progress_cb or _noop
 
-        # 1. Load model
+        # 1. Load model (triggers SO-VITS import on first call)
         cb('Loading SO-VITS model…', 10)
-        ok, msg = self.load(model_name)
+        ok, msg = self.load(model_name, progress_cb=cb)
         if not ok:
             return False, msg
 
@@ -284,7 +317,7 @@ class SoVitsEngine:
             '-o', str(out_dir),
             '-t', str(pitch_shift),
             '-fm', f0_method,
-            '-d', 'cuda' if (HAS_SOVITS and torch.cuda.is_available()) else 'cpu',
+            '-d', 'cuda' if (torch is not None and torch.cuda.is_available()) else 'cpu',
         ]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True,
@@ -438,10 +471,43 @@ class SoVitsEngine:
     # ── Quick inference check ─────────────────────────────────────
 
     def can_infer(self, model_name: str) -> bool:
-        return HAS_SOVITS and self.model_status(model_name) == STATUS_READY
+        # Returns True only for trained models (epoch > 0)
+        # Untrained/base models (G_0.pth) should use DSP fallback
+        return self.model_status(model_name) == STATUS_READY
 
     def is_loaded(self, model_name: str) -> bool:
         return self._loaded_name == model_name and self._svc is not None
+
+    # ── Text synthesis via XTTS v2 ────────────────────────────────
+
+    def synthesize_text(
+        self,
+        text: str,
+        model_name: str,
+        mood: str = 'default',
+        custom_ref: 'str | None' = None,
+        progress_cb: '_ProgressCB | None' = None,
+    ) -> tuple[bool, str]:
+        """
+        Generate text in the target voice using XTTS v2 zero-shot cloning.
+        Falls back to gTTS if XTTS is not available.
+
+        Returns (ok, wav_path_or_error_message).
+        """
+        from xtts_engine import XttsEngine
+        xe = XttsEngine(self.WORK)
+        if xe.can_synthesize():
+            try:
+                out = xe.synthesize(
+                    text, model_name,
+                    mood=mood,
+                    custom_ref=custom_ref,
+                    progress_cb=progress_cb,
+                )
+                return True, str(out)
+            except Exception as e:
+                return False, str(e)
+        return False, 'TTS library not installed'
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -459,6 +525,7 @@ def _noop(msg: str, pct: int): pass
 def status_label(status: str) -> str:
     return {
         STATUS_READY:       '🟢 SO-VITS READY',
+        STATUS_UNTRAINED:   '🟡 UNTRAINED — needs training',
         STATUS_NO_CONFIG:   '🟡 MISSING config.json',
         STATUS_PLACEHOLDER: '🟡 PLACEHOLDER — needs training',
         STATUS_MISSING:     '🔴 NO MODEL',
