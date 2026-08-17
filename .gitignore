@@ -61,6 +61,7 @@ outputs/**/*.wav
 outputs/**/*.mp3
 input/**/*.wav
 input/**/*.mp3
+.streamlit/*.pid
 
 # Model binaries — import/train locally
 models/**/*.pth

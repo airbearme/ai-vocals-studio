@@ -180,6 +180,12 @@ def main():
     # Header
     st.markdown('<h1 class="main-header">:studio_microphone: AI Vocals Studio</h1>', unsafe_allow_html=True)
     st.markdown("<h2 style='text-align: center; color: #00ff88;'>Consent-Based Voice Cloning & Generation</h2>", unsafe_allow_html=True)
+    st.warning(
+        "Permission required: only upload or clone a voice you own, created yourself, "
+        "or have explicit written permission/license to use. Do not clone artists, "
+        "celebrities, public figures, private people, or copyrighted recordings "
+        "without authorization."
+    )
 
     # Sidebar
     st.sidebar.markdown("## :gear: Settings")
@@ -203,6 +209,11 @@ def main():
     with tab1:
         st.markdown("### :studio_microphone: 3-Second Voice Cloning")
         st.markdown("Clone an authorized voice with a short reference sample.")
+        st.info(
+            "By continuing, you confirm the reference audio and target voice are authorized "
+            "for this use, including any artist-style, label, estate, or rights-holder approval "
+            "that may be required."
+        )
 
         col1, col2 = st.columns([2, 1])
 
@@ -235,7 +246,7 @@ def main():
         with col2:
             st.markdown("#### Step 4: Clone Voice")
             has_permission = st.checkbox(
-                "I own this voice or have explicit permission to clone it.",
+                "I own this voice or have explicit written permission/license to clone it.",
                 value=False
             )
 
