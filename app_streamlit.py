@@ -204,11 +204,11 @@ def main():
     st.sidebar.metric("Dataset Size", f"{dataset_info['total_size_mb']:.1f} MB")
 
     # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs([":studio_microphone: Voice Clone", ":speaking_head: Text-to-Speech", ":robot_face: Models", ":bar_chart: Analytics"])
+    tab1, tab2, tab3, tab4 = st.tabs([":musical_note: Song to Voice", ":speaking_head: Text-to-Speech", ":robot_face: Models", ":bar_chart: Analytics"])
 
     with tab1:
-        st.markdown("### :studio_microphone: 3-Second Voice Cloning")
-        st.markdown("Clone an authorized voice with a short reference sample.")
+        st.markdown("### :musical_note: Put Song Lyrics Into an Authorized Voice")
+        st.markdown("Upload the song, upload the authorized voice, then generate the lyrics with that cloned voice.")
         st.info(
             "By continuing, you confirm the reference audio and target voice are authorized "
             "for this use, including any artist-style, label, estate, or rights-holder approval "
@@ -218,9 +218,16 @@ def main():
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            # Reference audio upload
-            st.markdown("#### Step 1: Upload Reference Audio")
-            ref_audio = st.file_uploader("Choose authorized reference audio", type=['wav', 'mp3', 'm4a', 'flac'])
+            st.markdown("#### Step 1: Upload the Song")
+            song_audio = st.file_uploader("Choose the song whose lyrics you want to use", type=['wav', 'mp3', 'm4a', 'flac'], key="song_audio")
+            if song_audio:
+                st.success(f"Song uploaded: {song_audio.name}")
+                st.audio(song_audio)
+            with st.expander("Which song upload is best?"):
+                st.write("WAV or FLAC gives the cleanest source audio. MP3 is smaller and uploads faster but may lose detail. M4A is supported but can be slower to process.")
+
+            st.markdown("#### Step 2: Upload the Voice To Clone")
+            ref_audio = st.file_uploader("Choose an authorized voice reference", type=['wav', 'mp3', 'm4a', 'flac'], key="voice_audio")
 
             if ref_audio:
                 # Save uploaded file temporarily
@@ -231,28 +238,31 @@ def main():
                 st.success(f"Uploaded: {ref_audio.name}")
                 audio_player(tmp_audio_path)
 
-            # Reference text
-            st.markdown("#### Step 2: What's said in the audio?")
+            with st.expander("Which voice upload is best?"):
+                st.write("A clean WAV or FLAC recording with one speaker and little background music gives the most faithful result. MP3 works, but heavy compression, effects, or multiple voices reduce quality.")
+
+            st.markdown("#### Step 3: What's said in the voice sample?")
             ref_text = st.text_input("Reference text", value="This is my reference voice sample",
                                    help="Enter exactly what's said in the reference audio")
 
-            # Target text
-            st.markdown("#### Step 3: What should the voice say?")
-            target_text = st.text_area("Target text", value="This is a generated vocal take from AI Vocals Studio",
-                                     help="Enter the words to synthesize")
+            st.markdown("#### Step 4: Paste the Song Lyrics")
+            target_text = st.text_area("Lyrics for the cloned voice", placeholder="Paste the lyrics from the uploaded song here...", height=150,
+                                     help="Paste lyrics you have the right to use. The authorized cloned voice performs this text.")
             speaker_name = st.text_input("Voice label", value="Authorized_Voice",
                                        help="Use a project-safe label for the cloned voice")
 
         with col2:
-            st.markdown("#### Step 4: Clone Voice")
+            st.markdown("#### Step 5: Create Vocal Take")
             has_permission = st.checkbox(
                 "I own this voice or have explicit written permission/license to clone it.",
                 value=False
             )
 
-            if st.button(":studio_microphone: Clone Voice", type="primary", use_container_width=True):
+            if st.button(":studio_microphone: Create With Cloned Voice", type="primary", use_container_width=True):
                 if not st.session_state.has_qwen_runtime:
                     st.error("Qwen3-TTS not installed! Install with: pip install qwen-tts")
+                elif not song_audio:
+                    st.error("Please upload the song first")
                 elif not ref_audio:
                     st.error("Please upload a reference audio file")
                 elif not ref_text:
