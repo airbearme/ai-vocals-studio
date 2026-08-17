@@ -29,6 +29,7 @@ EXPOSE 8501
 
 # Set environment variables
 ENV PYTHONPATH=/app
+ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
 ENV APP_DATA_DIR=/app
 ENV MODEL_CACHE_DIR=/app/models
 ENV OUTPUT_DIR=/app/outputs
@@ -39,4 +40,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
 # Run the application
-CMD ["streamlit", "run", "app_streamlit.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+CMD ["streamlit", "run", "app_streamlit.py", "--server.port", "8501", "--server.address", "0.0.0.0", "--server.headless", "true"]
