@@ -133,26 +133,28 @@
         <h1>AI Vocals Studio</h1>
         <p class="lede">
           A production front door for authorized voice cloning and vocal generation.
-          Upload reference audio, confirm permission, and generate a labeled voice output from the studio backend.
+          Use the free Streamlit Cloud build for lightweight public hosting, then run the Docker backend
+          when you need heavier authorized cloning models.
         </p>
 
         <div class="actions">
-          <a class="primary" href="http://localhost:8501">Open Local Studio</a>
+          <a class="primary" href="https://share.streamlit.io">Deploy Free Streamlit App</a>
+          <a href="https://github.com/coden607/ai-vocals-studio/tree/streamlit-cloud-free">Free Cloud Branch</a>
           <a href="https://github.com/airbearme/ai-vocals-studio">Repository</a>
         </div>
 
         <section class="grid" aria-label="Studio capabilities">
           <div class="card">
             <strong>One-click workflow</strong>
-            <p>Upload authorized reference audio, enter transcript and target text, then generate.</p>
+            <p>Upload authorized reference audio, confirm permission, enter target text, then generate a free preview.</p>
           </div>
           <div class="card">
             <strong>Advanced backend</strong>
-            <p>Streamlit, Qwen3-TTS, gTTS fallback, Docker health checks, and local launch script.</p>
+            <p>Qwen3-TTS, Docker health checks, SoX, and the local launch script remain in the main backend.</p>
           </div>
           <div class="card">
             <strong>Production ready</strong>
-            <p>Designed for Docker-capable hosting, with Vercel serving as the public front door.</p>
+            <p>Free Streamlit Cloud for the public app; Docker-capable hosting for heavier voice models.</p>
           </div>
         </section>
 
