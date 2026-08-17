@@ -1,0 +1,21 @@
+# AI Vocals Studio - Minimal Requirements for Python 3.12
+# =====================================================
+
+# Core dependencies
+gTTS>=2.3.0
+pydub>=0.25.1
+numpy>=1.21.0
+soundfile>=0.12.0
+librosa>=0.10.0
+Pillow>=9.0.0
+kaggle>=1.5.0
+requests>=2.28.0
+streamlit>=1.48.0
+
+# Qwen3-TTS - Best free voice cloning with 3-second rapid cloning
+qwen-tts>=0.1.1
+
+# Optional - install separately if needed
+# elevenlabs>=1.0.0  # Requires API key
+# TTS  # Install with: pip install TTS
+# rvc-python>=0.0.17  # Install with: pip install rvc-python

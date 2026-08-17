@@ -28,6 +28,7 @@ ENV/
 # IDE
 .vscode/
 .idea/
+.windsurf/
 *.swp
 *.swo
 
@@ -79,3 +80,4 @@ logs/
 
 # Local personal config — never commit this
 .cloud_config
+.env
