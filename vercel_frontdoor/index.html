@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Vocals Studio</title>
+    <meta name="description" content="AI Vocals Studio voice cloning front door.">
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101214;
+        --panel: #171b1f;
+        --text: #eef3f0;
+        --muted: #a9b3ae;
+        --accent: #00d084;
+        --warn: #ffd166;
+        --line: #2a3036;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      main {
+        min-height: 100vh;
+        display: grid;
+        align-items: center;
+        padding: 32px;
+      }
+
+      .shell {
+        width: min(920px, 100%);
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(40px, 8vw, 78px);
+        line-height: 0.95;
+        font-weight: 800;
+      }
+
+      .lede {
+        margin: 0 0 28px;
+        max-width: 720px;
+        color: var(--muted);
+        font-size: 19px;
+        line-height: 1.55;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 28px;
+      }
+
+      a,
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 46px;
+        padding: 0 18px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .primary {
+        background: var(--accent);
+        color: #07110d;
+        border-color: var(--accent);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      .card strong {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .notice {
+        margin-top: 12px;
+        border-color: color-mix(in srgb, var(--warn), var(--line) 45%);
+      }
+
+      .notice strong {
+        color: var(--warn);
+      }
+
+      @media (max-width: 760px) {
+        main {
+          padding: 22px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="shell">
+        <h1>AI Vocals Studio</h1>
+        <p class="lede">
+          A production front door for authorized voice cloning and vocal generation.
+          Upload reference audio, confirm permission, and generate a labeled voice output from the studio backend.
+        </p>
+
+        <div class="actions">
+          <a class="primary" href="http://localhost:8501">Open Local Studio</a>
+          <a href="https://github.com/airbearme/ai-vocals-studio">Repository</a>
+        </div>
+
+        <section class="grid" aria-label="Studio capabilities">
+          <div class="card">
+            <strong>One-click workflow</strong>
+            <p>Upload authorized reference audio, enter transcript and target text, then generate.</p>
+          </div>
+          <div class="card">
+            <strong>Advanced backend</strong>
+            <p>Streamlit, Qwen3-TTS, gTTS fallback, Docker health checks, and local launch script.</p>
+          </div>
+          <div class="card">
+            <strong>Production ready</strong>
+            <p>Designed for Docker-capable hosting, with Vercel serving as the public front door.</p>
+          </div>
+        </section>
+
+        <section class="card notice">
+          <strong>Permission required</strong>
+          <p>
+            Only upload or clone voices you own, created yourself, or have explicit written permission/license to use.
+            Do not clone artists, celebrities, public figures, private people, or copyrighted recordings without authorization.
+          </p>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
