@@ -82,7 +82,12 @@ class VoiceDataAugmentor:
         # Spectral augmentation
         if random.random() < self.augmentation_config['spec_augment']['probability']:
             y_aug = self.spec_augment(y_aug, sr)
-        
+
+        # Ensure the augmented clip keeps the same length as the input so that
+        # downstream batched training / balanced datasets stay frame-aligned.
+        if len(y_aug) != len(y):
+            y_aug = librosa.util.fix_length(y_aug, size=len(y))
+
         return y_aug
     
     def time_stretch(self, y, rate):

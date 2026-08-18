@@ -284,9 +284,12 @@ class VoiceFeatureExtractor:
         # Energy envelope
         energy_envelope = librosa.feature.rms(y=y)[0]
         energy_peaks = signal.find_peaks(energy_envelope, height=np.mean(energy_envelope))[0]
-        
+
+        # Normalize tempo: librosa 0.11+ may return tempo as a 1-element numpy array.
+        tempo_scalar = float(np.atleast_1d(np.ravel(tempo))[0])
+
         features = {
-            'tempo_bpm': float(tempo),
+            'tempo_bpm': tempo_scalar,
             'num_beats': len(beats),
             'num_onsets': len(onsets),
             'rhythm_regularity': float(rhythm_regularity),

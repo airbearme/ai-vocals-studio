@@ -33,11 +33,12 @@ class VoiceQualityAssurance:
         
         # Feature weights for similarity calculation
         self.feature_weights = {
-            'pitch_similarity': 0.25,
-            'timbre_similarity': 0.30,
-            'rhythm_similarity': 0.15,
-            'energy_similarity': 0.10,
-            'spectral_similarity': 0.20
+            'pitch_similarity': 0.22,
+            'timbre_similarity': 0.26,
+            'rhythm_similarity': 0.12,
+            'energy_similarity': 0.08,
+            'spectral_similarity': 0.17,
+            'waveform_similarity': 0.15
         }
     
     def comprehensive_similarity_score(self, original_audio: str, cloned_audio: str) -> Dict:
@@ -60,7 +61,8 @@ class VoiceQualityAssurance:
                 'timbre_similarity': self._calculate_timbre_similarity(y_orig, y_clone),
                 'rhythm_similarity': self._calculate_rhythm_similarity(y_orig, y_clone),
                 'energy_similarity': self._calculate_energy_similarity(y_orig, y_clone),
-                'spectral_similarity': self._calculate_spectral_similarity(y_orig, y_clone)
+                'spectral_similarity': self._calculate_spectral_similarity(y_orig, y_clone),
+                'waveform_similarity': self._calculate_waveform_similarity(y_orig, y_clone)
             }
             
             # Calculate weighted overall similarity
@@ -265,6 +267,35 @@ class VoiceQualityAssurance:
             print(f"Spectral similarity error: {e}")
             return 0.5
     
+    def _calculate_waveform_similarity(self, y_orig: np.ndarray, y_clone: np.ndarray) -> float:
+        """
+        Calculate sample-level waveform similarity using Pearson correlation.
+
+        This is the strictest "indistinguishable" check: two genuinely identical
+        (or bit-close) clones score near 1.0, while unrelated audio scores ~0.
+        """
+        try:
+            min_len = min(len(y_orig), len(y_clone))
+            if min_len < 2:
+                return 0.5
+
+            a = y_orig[:min_len]
+            b = y_clone[:min_len]
+
+            a_centered = a - a.mean()
+            b_centered = b - b.mean()
+
+            denom = float(np.sqrt(np.sum(a_centered ** 2) * np.sum(b_centered ** 2)))
+            if denom < 1e-10:
+                return 0.5
+
+            correlation = float(np.sum(a_centered * b_centered) / denom)
+            return float(max(0.0, min(1.0, correlation)))
+
+        except Exception as e:
+            print(f"Waveform similarity error: {e}")
+            return 0.5
+
     def _calculate_weighted_similarity(self, scores: Dict) -> float:
         """Calculate weighted overall similarity score"""
         weighted_sum = 0.0

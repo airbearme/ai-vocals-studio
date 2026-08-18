@@ -119,6 +119,15 @@ class AdvancedAudioProcessor:
         
         # Apply spectral flatness for better VAD
         spectral_flatness = librosa.feature.spectral_flatness(y=y, hop_length=hop_length)[0]
+        # NOTE: spectral_flatness uses an STFT frame grid (n_fft=2048) that may differ
+        # in length from the energy-based VAD mask. Resample it onto the same grid so
+        # the two masks can be combined element-wise without a shape mismatch.
+        if len(spectral_flatness) != len(vad_mask):
+            spectral_flatness = np.interp(
+                np.linspace(0.0, 1.0, len(vad_mask)),
+                np.linspace(0.0, 1.0, len(spectral_flatness)),
+                spectral_flatness,
+            )
         spectral_mask = spectral_flatness < 0.3  # Speech has low spectral flatness
         
         # Combine masks
