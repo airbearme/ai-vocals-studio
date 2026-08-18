@@ -1,0 +1,29 @@
+{
+  "speaker": "Pacaveli",
+  "model_name": "pacaveli",
+  "type": "voice_clone",
+  "total_files": 5,
+  "audio_files": [
+    "2Pac - Who Do You Believe In (Acapella) (1).wav",
+    "2Pac Still Ballin' OG Acapella.wav",
+    "2Pac - Don't Go To Sleep OG (Acapella) [HD].wav",
+    "2Pac & Lil' Mo - Niggaz Nature (Acapella).wav",
+    "2pac ft The Outlaw immortalz- Komradz so so krazy (acapella).wav"
+  ],
+  "characteristics": {
+    "voice_type": "deep_male_rapper",
+    "pitch_shift": -4,
+    "speed": 1.08,
+    "reverb": 0.4,
+    "gain": 4,
+    "eq_low": 1.5,
+    "eq_mid": 0.8,
+    "eq_high": 0.9
+  },
+  "persona": {
+    "style": "west_coast_rap",
+    "delivery": "aggressive_confident",
+    "emotion": "intense"
+  },
+  "created": "2026-08-17"
+}

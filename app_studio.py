@@ -61,12 +61,12 @@ FONT = {
 GLITCH_CHARS = '!@#$%^&|/\\<>?{}[]01XY'
 
 VOICE_PERSONAS = {
-    'pacaveli':          {'pitch': -3,   'speed': 1.08, 'reverb': 0.35, 'gain': 3,  'desc': 'Pacaveli – West Coast rap, deep raw authority'},
-    'pacaveli_enhanced': {'pitch': -3.5, 'speed': 1.10, 'reverb': 0.40, 'gain': 4,  'desc': 'Pacaveli Enhanced – maximum realism'},
-    'male':               {'pitch': -4,   'speed': 1.00, 'reverb': 0.20, 'gain': 2,  'desc': 'Generic deep male voice'},
-    'female':             {'pitch': 4,    'speed': 1.00, 'reverb': 0.15, 'gain': 0,  'desc': 'Generic bright female voice'},
-    'robot':              {'pitch': 0,    'speed': 0.88, 'reverb': 0.50, 'gain': 6,  'desc': 'Vocoder / robot effect'},
-    'default':            {'pitch': 0,    'speed': 1.00, 'reverb': 0.05, 'gain': 0,  'desc': 'Clean unmodified voice'},
+    'pacaveli':          {'pitch': -4,   'speed': 1.08, 'reverb': 0.4,  'gain': 4,  'eq_low': 1.5, 'eq_mid': 0.8, 'eq_high': 0.9, 'desc': 'Pacaveli – West Coast rap, deep raw authority'},
+    'pacaveli_enhanced': {'pitch': -4.5, 'speed': 1.10, 'reverb': 0.45, 'gain': 5,  'eq_low': 1.6, 'eq_mid': 0.7, 'eq_high': 0.8, 'desc': 'Pacaveli Enhanced – maximum realism'},
+    'male':               {'pitch': -4,   'speed': 1.00, 'reverb': 0.20, 'gain': 2,  'eq_low': 1.3, 'eq_mid': 0.9, 'eq_high': 1.0, 'desc': 'Generic deep male voice'},
+    'female':             {'pitch': 4,    'speed': 1.00, 'reverb': 0.15, 'gain': 0,  'eq_low': 0.8, 'eq_mid': 1.1, 'eq_high': 1.2, 'desc': 'Generic bright female voice'},
+    'robot':              {'pitch': 0,    'speed': 0.88, 'reverb': 0.50, 'gain': 6,  'eq_low': 1.5, 'eq_mid': 0.7, 'eq_high': 0.5, 'desc': 'Vocoder / robot effect'},
+    'default':            {'pitch': 0,    'speed': 1.00, 'reverb': 0.05, 'gain': 0,  'eq_low': 1.0, 'eq_mid': 1.0, 'eq_high': 1.0, 'desc': 'Clean unmodified voice'},
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1120,6 +1120,32 @@ class StudioPro:
 
     def _get_persona(self, name):
         k=name.lower()
+        
+        # First check if there's a custom voice profile
+        model_dir = self.MODELS / k
+        if model_dir.exists():
+            voice_profile_file = model_dir / "voice_profile.json"
+            if voice_profile_file.exists():
+                try:
+                    with open(voice_profile_file) as f:
+                        profile = json.load(f)
+                    # Extract characteristics for persona
+                    if 'characteristics' in profile:
+                        chars = profile['characteristics']
+                        return {
+                            'pitch': chars.get('pitch_shift', 0),
+                            'speed': chars.get('speed', 1.0),
+                            'reverb': chars.get('reverb', 0.1),
+                            'gain': chars.get('gain', 0),
+                            'eq_low': chars.get('eq_low', 1.0),
+                            'eq_mid': chars.get('eq_mid', 1.0),
+                            'eq_high': chars.get('eq_high', 1.0),
+                            'desc': f"{profile.get('speaker', name)} – Custom voice clone"
+                        }
+                except Exception:
+                    pass
+        
+        # Fall back to predefined personas
         if k in VOICE_PERSONAS: return VOICE_PERSONAS[k]
         for kk in VOICE_PERSONAS:
             if kk in k or k in kk: return VOICE_PERSONAS[kk]
@@ -1296,7 +1322,29 @@ class StudioPro:
         except Exception as e:
             self._log(f'ℹ️ ElevenLabs: {type(e).__name__}: {e}')
 
-        # ── 2. XTTS v2 (free, local) ──────────────────────────────
+        # ── 2. Qwen3-TTS (real neural clone — installed, local) ───
+        try:
+            from qwen3_tts_engine import Qwen3TTSEngine, load_voice_dir
+            qe = Qwen3TTSEngine()
+            if qe.can_clone():
+                ref = self._custom_ref_path
+                if not ref or not os.path.exists(str(ref)):
+                    prof = load_voice_dir(model_name)
+                    ref = (prof or {}).get('reference')
+                if ref and os.path.exists(str(ref)):
+                    self._badge('ENGINE: 🧠 Qwen3-TTS Clone', C['green'])
+                    self._prog('🧠 Qwen3-TTS synthesizing…', 20)
+                    out = qe.clone_voice(
+                        ref_audio=str(ref), ref_text=None, target_text=text,
+                        speaker_name=model_name, progress_cb=self._prog,
+                    )
+                    if out and os.path.exists(out):
+                        self._log(f'🧠 Qwen3-TTS done: {len(text)} chars')
+                        return str(out)
+        except Exception as e:
+            self._log(f'ℹ️ Qwen3-TTS: {type(e).__name__}: {e}')
+
+        # ── 3. XTTS v2 (free, local) ──────────────────────────────
         try:
             from xtts_engine import XttsEngine
             xe = XttsEngine(base_dir)

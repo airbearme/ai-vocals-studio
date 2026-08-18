@@ -1,0 +1,28 @@
+{
+  "speaker": "w2re",
+  "model_name": "w2re_cloned",
+  "type": "voice_clone",
+  "total_files": 13,
+  "audio_files": [
+    "w2re_0011.wav",
+    "w2re_0006.wav",
+    "w2re_0004.wav",
+    "w2re_0007.wav",
+    "w2re_0008.wav",
+    "w2re_0010.wav",
+    "w2re_0000.wav",
+    "w2re_0005.wav",
+    "w2re_0003.wav",
+    "w2re_0012.wav",
+    "w2re_0001.wav",
+    "w2re_0002.wav",
+    "w2re_0009.wav"
+  ],
+  "characteristics": {
+    "pitch_shift": -2,
+    "speed": 1.05,
+    "reverb": 0.3,
+    "gain": 2
+  },
+  "created": "2026-08-17"
+}

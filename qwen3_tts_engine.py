@@ -1,12 +1,22 @@
 """
 qwen3_tts_engine.py - Qwen3-TTS voice cloning engine
 
-Advanced voice cloning with 3-second rapid cloning, multi-language support,
+Real neural voice cloning with 3-second rapid cloning, multi-language support,
 and natural language voice control. Use this only with voices you own or have
 explicit permission to clone.
 
-Requires: pip install qwen-tts
-Models auto-download on first use (~1-2GB each)
+Runs 100% locally (no API key). The system `sox` binary is NOT required; audio
+is loaded with soundfile/librosa.
+
+Model sizing:
+  - GPU enabled           -> Qwen3-TTS-12Hz-1.7B-Base (best quality)
+  - CPU                   -> Qwen3-TTS-12Hz-0.6B-Base  (fits ~2.5 GB RAM)
+  - override via env var QWEN_TTS_MODEL, or QWEN_LOW_MEM=1 for float16 CPU.
+
+Cloning mode:
+  - Default: x-vector-only (speaker embedding only) — no reference transcript
+    required. Pass ref_text=None.
+  - With transcript: pass ref_text for slightly tighter delivery.
 
 Usage:
     from qwen3_tts_engine import Qwen3TTSEngine
@@ -14,16 +24,21 @@ Usage:
     if engine.can_clone():
         out_path = engine.clone_voice(
             ref_audio="reference_sample.wav",
-            ref_text="This is my reference voice sample",
+            ref_text=None,              # transcript optional
             target_text="This is the generated vocal take",
-            speaker_name="Authorized_Voice"
+            speaker_name="Authorized_Voice",
         )
+        engine.save_clone("Authorized_Voice", "reference_sample.wav")
+        out2 = engine.generate_from_voice("Authorized_Voice",
+                                          "Hello again in the same voice")
 """
 from __future__ import annotations
+import json
 import os
 import re
 import shutil
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Union, List, Tuple
 
@@ -41,6 +56,9 @@ _qwen_lock = threading.Lock()
 _qwen_ready = threading.Event()
 HAS_QWEN: bool = False
 
+# Where cloned voices are persisted (mirrors voice_cloner.DEFAULT_VOICES_DIR)
+DEFAULT_VOICES_DIR = Path(os.environ.get("VOICES_DIR", "models/voices"))
+
 
 def _safe_voice_name(name: str) -> str:
     """Return a filesystem-safe voice label."""
@@ -48,20 +66,57 @@ def _safe_voice_name(name: str) -> str:
     return safe.strip("._") or "cloned_voice"
 
 
+def list_saved_voices(voices_dir: Union[str, Path] = DEFAULT_VOICES_DIR) -> List[dict]:
+    """Return metadata for every saved voice clone, newest first."""
+    voices_dir = Path(voices_dir)
+    out: List[dict] = []
+    if not voices_dir.is_dir():
+        return out
+    for d in sorted(voices_dir.iterdir(), key=lambda p: p.stat().st_mtime,
+                    reverse=True):
+        prof_file = d / "voice_profile.json"
+        if not d.is_dir() or not prof_file.exists():
+            continue
+        try:
+            data = json.loads(prof_file.read_text())
+            out.append({
+                "name": data.get("name", d.name),
+                "source_type": data.get("source_type", "speech"),
+                "description": data.get("description", ""),
+                "created": data.get("created", ""),
+                "reference": str(d / "reference.wav"),
+                "voice_dir": str(d),
+            })
+        except Exception:
+            continue
+    return out
+
+
+def load_voice_dir(voice_name: str,
+                   voices_dir: Union[str, Path] = DEFAULT_VOICES_DIR) -> Optional[dict]:
+    """Load a saved clone profile by name. Returns dict or None."""
+    prof_file = Path(voices_dir) / _safe_voice_name(voice_name) / "voice_profile.json"
+    if not prof_file.exists():
+        return None
+    try:
+        return json.loads(prof_file.read_text())
+    except Exception:
+        return None
+
+
 def _ensure_qwen(progress_cb: Optional[_ProgressCB] = None) -> bool:
     """Import qwen-tts on first call. Thread-safe. Returns True if available."""
     global _qwen_module, HAS_QWEN
-    if shutil.which("sox") is None:
-        if progress_cb:
-            progress_cb("SoX is required for Qwen3-TTS audio processing.", 0)
-        HAS_QWEN = False
-        _qwen_ready.set()
-        return False
     if _qwen_ready.is_set():
         return HAS_QWEN
     if not _qwen_lock.acquire(blocking=False):
         _qwen_ready.wait(timeout=60)
         return HAS_QWEN
+    # qwen-tts loads audio via soundfile/librosa, so the system `sox` binary
+    # is *not* required. Warn, don't block, when it's missing.
+    if shutil.which("sox") is None and progress_cb:
+        progress_cb("Note: system 'sox' not found — using soundfile for audio. "
+                    "Install it (sudo apt install sox) for extra format support.", 5)
     try:
         if progress_cb:
             progress_cb('Loading Qwen3-TTS engine...', 5)
@@ -123,11 +178,23 @@ class Qwen3TTSEngine:
             "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"  # Voice design capabilities
         ]
 
-    def load_model(self, model_name: str = "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    def load_model(self,
+                   model_name: Optional[str] = None,
                    progress_cb: Optional[_ProgressCB] = None) -> bool:
-        """Load Qwen3-TTS model"""
+        """Load a Qwen3-TTS model sized for this machine.
+
+        Defaults:
+          - GPU -> 1.7B (best quality)
+          - CPU -> 0.6B (fits ~2.5 GB RAM; usable without a GPU)
+        Override with an explicit `model_name`, or the env var QWEN_TTS_MODEL.
+        """
         if not self.can_clone():
             return False
+
+        if model_name is None:
+            model_name = os.environ.get("QWEN_TTS_MODEL") or (
+                "Qwen/Qwen3-TTS-12Hz-0.6B-Base" if self.device == "cpu"
+                else "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
 
         try:
             if progress_cb:
@@ -137,13 +204,21 @@ class Qwen3TTSEngine:
             torch = modules['torch']
             Qwen3TTSModel = modules['Qwen3TTSModel']
 
-            # Load model with optimal settings
-            self.model = Qwen3TTSModel.from_pretrained(
-                model_name,
-                device_map=self.device,
-                dtype=torch.bfloat16 if self.device == "cuda" else torch.float32,
-                attn_implementation="flash_attention_2" if self.device == "cuda" else "eager"
-            )
+            low_mem = os.environ.get("QWEN_LOW_MEM", "").lower() in ("1", "true", "yes")
+            dtype = torch.bfloat16 if self.device == "cuda" else (
+                torch.float16 if low_mem else torch.float32)
+            attn = "flash_attention_2" if self.device == "cuda" else "eager"
+
+            try:
+                self.model = Qwen3TTSModel.from_pretrained(
+                    model_name,
+                    device_map=self.device,
+                    dtype=dtype,
+                    attn_implementation=attn,
+                )
+            except Exception:
+                # last resort: whatever precision / settings load cleanly
+                self.model = Qwen3TTSModel.from_pretrained(model_name)
 
             self.current_model_name = model_name
 
@@ -156,6 +231,70 @@ class Qwen3TTSEngine:
             if progress_cb:
                 progress_cb(f'Error loading model: {str(e)}', 0)
             return False
+
+    def save_clone(self,
+                   name: str,
+                   ref_audio_path: Union[str, Path],
+                   source_type: str = "speech",
+                   description: str = "",
+                   voices_dir: Union[str, Path] = DEFAULT_VOICES_DIR) -> Path:
+        """Persist a cloned voice so it can be re-used later.
+
+        Stores `reference.wav` + `voice_profile.json` under
+        `models/voices/<name>/`. Returns the voice directory.
+        """
+        name = _safe_voice_name(name)
+        d = Path(voices_dir) / name
+        d.mkdir(parents=True, exist_ok=True)
+
+        if Path(ref_audio_path).exists():
+            shutil.copy2(ref_audio_path, d / "reference.wav")
+
+        profile = {
+            "name": name,
+            "source_type": source_type,
+            "description": description,
+            "created": datetime.now().isoformat(timespec="seconds"),
+            "reference": str(d / "reference.wav"),
+            "voice_dir": str(d),
+            "methods": {"dsp": True, "qwen_neural": True, "rvc": False},
+        }
+        (d / "voice_profile.json").write_text(json.dumps(profile, indent=2))
+        return d
+
+    def generate_from_voice(self,
+                            voice: Union[str, Path, dict],
+                            text: str,
+                            language: str = "Auto",
+                            output_path: Optional[Union[str, Path]] = None,
+                            progress_cb: Optional[_ProgressCB] = None) -> Optional[str]:
+        """Speak `text` in a previously saved cloned voice.
+
+        voice     : a saved voice name (looked up in models/voices),
+                    or a dict/profile with a 'reference'/'voice_dir' key.
+        """
+        cb = progress_cb or (lambda m, p: None)
+
+        if isinstance(voice, dict):
+            ref = voice.get("reference") or (Path(voice.get("voice_dir", "")) / "reference.wav")
+        else:
+            prof = load_voice_dir(str(voice))
+            ref = (prof or {}).get("reference")
+
+        if not ref or not Path(ref).exists():
+            cb(f"Voice not found: {voice}", 0)
+            return None
+
+        cb(f"Generating with saved voice {Path(str(ref)).parent.name}...", 25)
+        return self.clone_voice(
+            ref_audio=str(ref),
+            ref_text=None,                 # x-vector-only: no transcript needed
+            target_text=text,
+            speaker_name=Path(str(ref)).parent.name,
+            language=language,
+            output_path=output_path,
+            progress_cb=cb,
+        )
 
     def clone_voice(self,
                    ref_audio: Union[str, Path, Tuple[np.ndarray, int]],
@@ -170,7 +309,8 @@ class Qwen3TTSEngine:
 
         Args:
             ref_audio: Reference audio file path or (numpy_array, sample_rate) tuple
-            ref_text: Transcript of reference audio
+            ref_text: Transcript of reference audio (optional — pass None and the
+                      clone is built from the voice alone, no transcript needed)
             target_text: Text to synthesize in cloned voice
             speaker_name: Name for the cloned voice
             language: Target language (Auto for auto-detection)
@@ -191,12 +331,15 @@ class Qwen3TTSEngine:
             modules = _qwen_module
             soundfile = modules['soundfile']
 
-            # Generate cloned voice
+            # Generate cloned voice.
+            # x_vector_only_mode=True clones from the speaker embedding alone,
+            # so no reference transcript is required (works from any clean clip).
             wavs, sr = self.model.generate_voice_clone(
                 ref_audio=ref_audio,
                 ref_text=ref_text,
                 text=target_text,
-                language=language
+                language=language,
+                x_vector_only_mode=True,
             )
 
             if progress_cb:

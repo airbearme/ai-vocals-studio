@@ -1,0 +1,28 @@
+{
+  "speaker": "test speaker",
+  "model_name": "test speaker_cloned",
+  "type": "voice_clone",
+  "total_files": 13,
+  "audio_files": [
+    "test speaker_0007.wav",
+    "test speaker_0004.wav",
+    "test speaker_0002.wav",
+    "test speaker_0011.wav",
+    "test speaker_0005.wav",
+    "test speaker_0006.wav",
+    "test speaker_0009.wav",
+    "test speaker_0010.wav",
+    "test speaker_0008.wav",
+    "test speaker_0003.wav",
+    "test speaker_0001.wav",
+    "test speaker_0012.wav",
+    "test speaker_0000.wav"
+  ],
+  "characteristics": {
+    "pitch_shift": -2,
+    "speed": 1.05,
+    "reverb": 0.3,
+    "gain": 2
+  },
+  "created": "2026-08-17"
+}

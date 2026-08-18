@@ -24,9 +24,11 @@ BASE = os.environ.get("APP_DATA_DIR", os.path.expanduser("~/ai-vocals-studio"))
 OUT = os.environ.get("OUTPUT_DIR", os.path.join(BASE, "outputs"))
 DATA = os.environ.get("DATASET_DIR", os.path.join(BASE, "dataset"))
 MODELS = os.environ.get("MODEL_CACHE_DIR", os.path.join(BASE, "models"))
+VOICES = os.path.join(MODELS, "voices")
 os.makedirs(OUT, exist_ok=True)
 os.makedirs(DATA, exist_ok=True)
 os.makedirs(MODELS, exist_ok=True)
+os.makedirs(VOICES, exist_ok=True)
 
 # Page config
 st.set_page_config(
@@ -97,6 +99,17 @@ def init_session_state():
         st.session_state.cloning_progress = 0
     if 'cloning_status' not in st.session_state:
         st.session_state.cloning_status = "Ready"
+    if 'saved_voices' not in st.session_state:
+        st.session_state.saved_voices = []
+    refresh_saved_voices()
+
+def refresh_saved_voices():
+    """Refresh the list of persisted cloned voices from models/voices/."""
+    try:
+        from qwen3_tts_engine import list_saved_voices
+        st.session_state.saved_voices = list_saved_voices(VOICES)
+    except Exception:
+        st.session_state.saved_voices = []
 
 def load_voice_dataset():
     """Load and display local reference dataset information."""
@@ -116,11 +129,14 @@ def load_voice_dataset():
 
     return dataset_info
 
-def clone_voice_worker(ref_audio_path, ref_text, target_text, speaker_name):
-    """Background worker for voice cloning"""
+def clone_voice_worker(ref_audio_path, ref_text, target_text, speaker_name, persist=True):
+    """Background worker for voice cloning (x-vector-only: transcript optional)"""
     try:
         if not st.session_state.qwen_engine:
-            st.session_state.cloning_status = "Qwen3-TTS not available"
+            st.session_state.qwen_engine = Qwen3TTSEngine()
+        if not st.session_state.qwen_engine.can_clone():
+            st.session_state.cloning_status = "Qwen3-TTS engine unavailable"
+            st.session_state.cloning_progress = 0
             return
 
         # Update progress
@@ -139,10 +155,10 @@ def clone_voice_worker(ref_audio_path, ref_text, target_text, speaker_name):
         st.session_state.cloning_status = "Cloning voice..."
         st.session_state.cloning_progress = 50
 
-        # Clone voice
+        # Clone voice (no transcript required — speaker-embedding clone)
         output_path = st.session_state.qwen_engine.clone_voice(
             ref_audio=ref_audio_path,
-            ref_text=ref_text,
+            ref_text=(ref_text or None),
             target_text=target_text,
             speaker_name=speaker_name,
             progress_cb=progress_cb
@@ -152,8 +168,17 @@ def clone_voice_worker(ref_audio_path, ref_text, target_text, speaker_name):
             st.session_state.cloning_status = f"Success! Saved to: {output_path}"
             st.session_state.cloning_progress = 100
             st.session_state.last_output = output_path
+            if persist:
+                try:
+                    st.session_state.qwen_engine.save_clone(
+                        speaker_name, ref_audio_path,
+                        description="Cloned from uploaded reference audio")
+                    refresh_saved_voices()
+                except Exception:
+                    pass
         else:
             st.session_state.cloning_status = "Cloning failed"
+            st.session_state.cloning_progress = 0
 
     except Exception as e:
         st.session_state.cloning_status = f"Error: {str(e)}"
@@ -241,15 +266,22 @@ def main():
             with st.expander("Which voice upload is best?"):
                 st.write("A clean WAV or FLAC recording with one speaker and little background music gives the most faithful result. MP3 works, but heavy compression, effects, or multiple voices reduce quality.")
 
-            st.markdown("#### Step 3: What's said in the voice sample?")
-            ref_text = st.text_input("Reference text", value="This is my reference voice sample",
-                                   help="Enter exactly what's said in the reference audio")
+            st.markdown("#### Step 3: Reference transcript (optional)")
+            no_transcript = st.checkbox(
+                "I don't have a transcript — clone from the voice alone (recommended)",
+                value=True,
+                help="Qwen3-TTS clones from the speaker embedding only, so a transcript "
+                     "is not required. Providing one can tighten delivery.")
+            ref_text = ""
+            if not no_transcript:
+                ref_text = st.text_input("Reference text", value="This is my reference voice sample",
+                                         help="Enter exactly what's said in the reference audio")
 
             st.markdown("#### Step 4: Paste the Song Lyrics")
             target_text = st.text_area("Lyrics for the cloned voice", placeholder="Paste the lyrics from the uploaded song here...", height=150,
                                      help="Paste lyrics you have the right to use. The authorized cloned voice performs this text.")
             speaker_name = st.text_input("Voice label", value="Authorized_Voice",
-                                       help="Use a project-safe label for the cloned voice")
+                                       help="Use a project-safe label for the cloned voice (saved under models/voices/)")
 
         with col2:
             st.markdown("#### Step 5: Create Vocal Take")
@@ -265,8 +297,6 @@ def main():
                     st.error("Please upload the song first")
                 elif not ref_audio:
                     st.error("Please upload a reference audio file")
-                elif not ref_text:
-                    st.error("Please enter the reference text")
                 elif not target_text:
                     st.error("Please enter the target text")
                 elif not has_permission:
@@ -278,7 +308,7 @@ def main():
 
                     thread = threading.Thread(
                         target=clone_voice_worker,
-                        args=(tmp_audio_path, ref_text, target_text, speaker_name.strip() or "Authorized_Voice")
+                        args=(tmp_audio_path, ref_text, target_text, speaker_name.strip() or "Authorized_Voice", True)
                     )
                     thread.daemon = True
                     thread.start()
@@ -294,16 +324,29 @@ def main():
 
     with tab2:
         st.markdown("### :speaking_head: Text-to-Speech")
-        st.markdown("Generate speech using different TTS engines")
+        st.markdown("Generate speech in a saved cloned voice (Qwen3-TTS) or with gTTS")
 
         # Text input
         text_input = st.text_area("Enter text to generate", value="Westside till we die!", height=100)
+
+        # Saved cloned voices
+        saved_names = [v["name"] for v in st.session_state.saved_voices]
+        if saved_names:
+            use_saved = st.selectbox(
+                "Use a saved cloned voice",
+                ["(none — use engine settings below)"] + saved_names,
+                help="Voices you cloned earlier are saved under models/voices/ and "
+                     "can be re-used here without re-uploading.")
+        else:
+            use_saved = "(none — use engine settings below)"
+            st.caption("No saved clones yet — clone a voice in the 'Song to Voice' tab first.")
 
         col1, col2 = st.columns([3, 1])
 
         with col1:
             # Voice settings
-            if selected_engine == "Qwen3-TTS (Advanced)":
+            if (selected_engine == "Qwen3-TTS (Advanced)"
+                    and use_saved == "(none — use engine settings below)"):
                 voice_description = st.text_input("Voice description",
                                                 value="Warm, expressive rap vocal with confident delivery",
                                                 help="Describe tone and delivery. Use only licensed artist references.")
@@ -314,7 +357,20 @@ def main():
                     st.error("Please enter text to generate")
                 else:
                     try:
-                        if selected_engine == "gTTS (Free)":
+                        if use_saved != "(none — use engine settings below)":
+                            # Speak in a previously saved cloned voice
+                            if not st.session_state.qwen_engine:
+                                st.session_state.qwen_engine = Qwen3TTSEngine()
+                            with st.spinner("Generating with cloned voice..."):
+                                output_path = st.session_state.qwen_engine.generate_from_voice(
+                                    use_saved, text_input)
+                            if output_path:
+                                st.success(f"Speech generated in cloned voice '{use_saved}'!")
+                                audio_player(output_path)
+                            else:
+                                st.error("Failed to generate with saved voice")
+
+                        elif selected_engine == "gTTS (Free)":
                             # Use gTTS
                             tts = gTTS(text=text_input, lang='en')
                             output_path = os.path.join(OUT, f"gtts_output_{int(time.time())}.mp3")
@@ -323,15 +379,16 @@ def main():
                             audio_player(output_path)
 
                         elif st.session_state.has_qwen_runtime and selected_engine == "Qwen3-TTS (Advanced)":
-                            # Use Qwen3-TTS
+                            # Use Qwen3-TTS voice design
                             if not st.session_state.qwen_engine:
                                 st.session_state.qwen_engine = Qwen3TTSEngine()
 
-                            output_path = st.session_state.qwen_engine.design_voice(
-                                text=text_input,
-                                voice_description=voice_description,
-                                speaker_name="Designed_Voice"
-                            )
+                            with st.spinner("Designing voice and synthesizing..."):
+                                output_path = st.session_state.qwen_engine.design_voice(
+                                    text=text_input,
+                                    voice_description=voice_description,
+                                    speaker_name="Designed_Voice"
+                                )
 
                             if output_path:
                                 st.success("Speech generated with Qwen3-TTS!")

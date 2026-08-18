@@ -1,2 +1,4 @@
-dataset/44k/Pacaveli/speaker_0009.wav
-dataset/44k/Pacaveli/speaker_0013.wav
+dataset/44k/test speaker/test speaker_0009.wav
+dataset/44k/test speaker/test speaker_0011.wav
+dataset/44k/w2re/w2re_0001.wav
+dataset/44k/w2re/w2re_0009.wav

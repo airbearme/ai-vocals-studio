@@ -21,6 +21,11 @@ fi
 venv/bin/python -m pip install -q --upgrade pip
 venv/bin/python -m pip install -q -r requirements_minimal.txt
 
+# Best-effort system deps for audio processing (soundfile/sox/ffmpeg support)
+if ! command -v sox >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1; then
+    sudo -n apt-get install -y -qq sox libsndfile1 ffmpeg >/dev/null 2>&1 || true
+fi
+
 if [ -f "$PID_FILE" ]; then
     OLD_PID="$(cat "$PID_FILE" || true)"
     if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then

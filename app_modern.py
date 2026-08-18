@@ -14,6 +14,7 @@ import datetime
 import json
 import time
 from voice_trainer import VoiceTrainer
+from precision_voice_cloning_system import PrecisionVoiceCloningSystem
 
 BASE = os.path.expanduser("~/ai-vocals-studio")
 OUT = os.path.join(BASE, "outputs")
@@ -214,6 +215,9 @@ class ModernApp:
         # Initialize progress manager
         self.progress = ProgressManager(root)
         
+        # Initialize precision voice cloning system
+        self.precision_system = PrecisionVoiceCloningSystem(BASE, MODELS, OUT)
+        
         # Variables
         self.audio_path = tk.StringVar()
         self.outname = tk.StringVar()
@@ -238,6 +242,9 @@ class ModernApp:
         
         # Check setup status
         self.root.after(2000, self.check_setup_status)
+        
+        # Show precision system status
+        self.root.after(3000, self.show_precision_system_status)
 
     def show_welcome_guide(self):
         """Show welcome message with next steps"""
@@ -288,6 +295,37 @@ class ModernApp:
             self.show_next_steps("ready", "You're all set to generate vocals!")
         
         return audio_count, model_count
+    
+    def show_precision_system_status(self):
+        """Show precision voice cloning system status"""
+        try:
+            status = self.precision_system.get_system_status()
+            
+            status_message = f"🚀 Precision System: {status['system_health'].upper()}"
+            components_count = sum(status['components'].values())
+            total_components = len(status['components'])
+            
+            if status['system_health'] == 'optimal':
+                color = '#00ff88'
+                detail = f"All {total_components} advanced components operational"
+            elif status['system_health'] == 'operational':
+                color = '#f39c12'
+                detail = f"{components_count}/{total_components} components operational"
+            else:
+                color = '#e74c3c'
+                detail = f"System degraded - only {components_count}/{total_components} components working"
+            
+            # Show status in a temporary label
+            precision_status = tk.Label(self.root, text=f"{status_message} | {detail}", 
+                                      font=('Segoe UI', 9), 
+                                      fg=color, bg='#1a1a1a')
+            precision_status.pack(side='bottom', pady=5)
+            
+            # Remove after 10 seconds
+            self.root.after(10000, precision_status.destroy)
+            
+        except Exception as e:
+            print(f"Error showing precision system status: {e}")
 
     def setup_styles(self):
         style = ttk.Style()
@@ -546,9 +584,16 @@ class ModernApp:
                                   font=('Segoe UI', 11, 'bold'))
         finetune_btn.pack(pady=5)
         
-        tk.Label(clone_frame, text="Fine-tune: Start with pre-trained model + your voice", 
+        # Precision cloning button
+        precision_btn = ModernButton(clone_frame, text="🚀 PRECISION VOICE CLONING", 
+                                   command=self.start_precision_cloning,
+                                   bg='#00ff88', fg='#1a1a1a', 
+                                   font=('Segoe UI', 13, 'bold'))
+        precision_btn.pack(pady=5)
+        
+        tk.Label(clone_frame, text="Precision: Uses advanced AI for maximum accuracy", 
                 font=('Segoe UI', 9), 
-                fg='#bdc3c7', bg='#2b2b2b').pack()
+                fg='#00ff88', bg='#2b2b2b').pack()
         
         # Training progress
         self.training_status = tk.Label(clone_frame, text="", 
@@ -1093,6 +1138,100 @@ class ModernApp:
         except Exception as e:
             error_msg = str(e)
             self.training_status.config(text=f"❌ Cloning failed: {error_msg[:50]}...", fg='#e74c3c')
+    
+    def start_precision_cloning(self):
+        speaker_name = self.speaker_name_var.get().strip()
+        model_name = self.model_name_var.get().strip()
+        
+        if not speaker_name or not model_name:
+            messagebox.showwarning("⚠️ Missing Information", "Please enter both speaker name and model name.")
+            return
+        
+        # Check if we have training data
+        audio_extensions = ["*.wav", "*.mp3", "*.flac", "*.ogg", "*.m4a", "*.aiff", "*.aac"]
+        audio_count = 0
+        for ext in audio_extensions:
+            audio_count += len(glob.glob(os.path.join(DATA, ext)))
+        
+        if audio_count == 0:
+            messagebox.showwarning("⚠️ No Training Data", "Please import audio files first!")
+            return
+        
+        if audio_count < 10:
+            if not messagebox.askyesno("⚠️ Limited Data", 
+                                      f"Only {audio_count} audio files found. "
+                                      "For best precision results, use at least 10-50 files. Continue anyway?"):
+                return
+        
+        # Start precision cloning in background thread
+        self.training_status.config(text="🚀 Starting precision voice cloning...", fg='#00ff88')
+        threading.Thread(target=self._precision_cloning_thread, 
+                        args=(speaker_name, model_name), 
+                        daemon=True).start()
+    
+    def _precision_cloning_thread(self, speaker_name, model_name):
+        try:
+            steps = [
+                "🎤 Analyzing voice characteristics",
+                "🔧 Applying advanced preprocessing",
+                "📊 Extracting comprehensive features",
+                "🎨 Applying data augmentation",
+                "🧠 Running advanced AI training",
+                "✅ Validating model quality",
+                "🎯 Finalizing precision clone"
+            ]
+            
+            self.progress.show_progress(
+                title=f"🚀 Precision Voice Cloning - {speaker_name}",
+                message="Using advanced AI for maximum voice cloning accuracy...",
+                steps=steps
+            )
+            
+            def progress_callback(message, percent):
+                self.progress.update_progress(percent, message)
+            
+            # Run precision cloning
+            result = self.precision_system.precision_clone_voice(
+                speaker_name, 
+                model_name, 
+                progress_callback
+            )
+            
+            if result['status'] == 'success':
+                self.progress.update_progress(100, f"✅ Precision cloning complete!", 
+                                         suggestion=f"Model '{model_name}' created with {result['quality_report'].get('average_similarity', 0):.1%} similarity")
+                
+                messagebox.showinfo("🎉 Precision Cloning Success!", 
+                                  f"Advanced voice cloning completed!\n\n"
+                                  f"🎤 Speaker: {speaker_name}\n"
+                                  f"🤖 Model: {model_name}\n"
+                                  f"📁 Location: {result['model_path']}\n"
+                                  f"📊 Quality: {result['quality_report'].get('status', 'unknown')}\n"
+                                  f"🎯 Similarity: {result['quality_report'].get('average_similarity', 0):.1%}\n\n"
+                                  f"Next: Load this model in Models tab → Generate vocals!")
+                
+                # Auto-close after 5 seconds
+                self.root.after(5000, self.progress.close_progress)
+                
+                # Refresh model list
+                self.refresh_model_list()
+                
+                # Update status
+                self.check_setup_status()
+                
+            else:
+                self.progress.update_progress(0, f"❌ Precision cloning failed", 
+                                         suggestion=result.get('error', 'Unknown error'))
+                messagebox.showerror("❌ Precision Cloning Failed", 
+                                   f"Failed to create precision voice clone:\n{result.get('error', 'Unknown error')}")
+                self.progress.close_progress()
+                
+        except Exception as e:
+            error_msg = str(e)
+            self.progress.update_progress(0, f"❌ Error: {error_msg[:50]}...", 
+                                     suggestion="Check system requirements and try again")
+            self.progress.close_progress()
+            messagebox.showerror("❌ Error", f"Precision cloning error:\n{error_msg}")
     
     def generate(self):
         try:
