@@ -1,0 +1,170 @@
+# AI Vocals Studio - Environment Configuration
+# This file defines the development environment setup for the project
+
+name: ai-vocals-studio
+description: Professional voice cloning and AI vocals generation system
+
+# Python version requirement
+python:
+  version: "3.10"
+  recommended: "3.12"
+
+# Core dependencies
+dependencies:
+  # Audio processing
+  - librosa>=0.10.0
+  - soundfile>=0.12.0
+  - numpy>=1.21.0
+  - pydub>=0.25.1
+  - scipy>=1.7.0
+
+  # Machine learning
+  - torch>=2.0.0
+  - torchaudio>=2.0.0
+
+  # TTS engines
+  - gtts>=2.3.0
+  - TTS>=0.23.0  # XTTS v2
+  - qwen-tts>=0.1.1
+
+  # Optional: ElevenLabs (requires API key)
+  # - elevenlabs>=1.0.0
+
+  # Optional: RVC
+  # - rvc-python>=0.0.17
+
+  # Optional: SO-VITS-SVC
+  # - so-vits-svc-fork==4.2.30
+
+  # UI and visualization
+  - Pillow>=9.0.0
+  - matplotlib>=3.5.0
+  - streamlit>=1.48.0
+
+  # Data processing
+  - pandas>=1.3.0
+  - pyyaml>=6.0
+
+  # Development tools
+  - pytest>=7.0.0
+  - black>=22.0.0
+  - flake8>=4.0.0
+
+# Optional dependencies for cloud integration
+optional_dependencies:
+  kaggle:
+    - kaggle>=1.5.0
+    - requests>=2.28.0
+
+  cloud_training:
+    - google-cloud-storage>=2.0.0
+    - boto3>=1.26.0
+
+  advanced_audio:
+    - pyworld>=0.3.0
+    - praat-parselmouth>=0.4.0
+
+# System requirements
+system_requirements:
+  os:
+    - linux
+    - macos
+    - windows
+  gpu:
+    recommended: true
+    memory: "4GB+"
+    libraries:
+      - cuda>=11.0
+      - cudnn>=8.0
+
+# Development environment setup
+dev_environment:
+  ide:
+    - vscode
+    - pycharm
+    - windsurf
+  
+  recommended_extensions:
+    - python
+    - jupyter
+    - gitlens
+  
+  terminal:
+    shell: bash
+    tools:
+      - git
+      - python3
+      - pip
+
+# Project structure verification
+verify_structure:
+  required_directories:
+    - dataset
+    - models
+    - output
+    - configs
+    - filelists
+    - logs
+  
+  required_files:
+    - app_minimal.py
+    - app_modern.py
+    - voice_trainer.py
+    - enhanced_voice_cloner.py
+    - requirements.txt
+    - requirements_minimal.txt
+
+# Environment variables
+environment_variables:
+  required:
+    - PYTHONPATH
+  optional:
+    - ELEVENLABS_API_KEY
+    - KAGGLE_USERNAME
+    - KAGGLE_KEY
+    - CUDA_VISIBLE_DEVICES
+
+# Installation instructions
+installation:
+  first_time:
+    - ./install.sh
+    - source venv/bin/activate
+    - pip install -r requirements.txt
+  
+  update:
+    - source venv/bin/activate
+    - pip install --upgrade -r requirements.txt
+  
+  verify:
+    - python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+    - python -c "import librosa, soundfile; print('Audio processing OK')"
+
+# Testing setup
+testing:
+  framework: pytest
+  test_directory: tests
+  coverage_threshold: 80
+  test_commands:
+    - pytest tests/
+    - pytest tests/ --coverage
+    - python test_voice_cloning.py
+    - python test_precision_cloning.py
+
+# Build and deployment
+build:
+  package: false
+  docker: true
+  dockerfile: Dockerfile
+  streamlit: true
+  
+deployment:
+  platforms:
+    - streamlit_cloud
+    - google_colab
+    - local
+  
+  production_checklist:
+    - Model quality validation
+    - Performance benchmarking
+    - Security audit
+    - Documentation completeness

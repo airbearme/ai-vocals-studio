@@ -1,0 +1,156 @@
+# AI Vocals Studio - Comprehensive .gitignore
+# Protects sensitive data, large files, and build artifacts
+
+# Voice data and models (NEVER commit voice samples or trained models)
+dataset/
+dataset_raw/
+models/*.pth
+models/*/*.pth
+models/*/*.pt
+models/*/voice_profile.json
+models/pretrained/
+
+# Generated audio
+output/
+outputs/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aiff
+*.aac
+
+# Audio processing cache
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.windsurf/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Training artifacts
+checkpoints/
+logs/*.log
+*.ckpt
+*.pth
+*.pt
+runs/
+wandb/
+
+# Configuration and secrets
+.env
+.env.local
+.env.*.local
+secrets/
+credentials/
+*.key
+*.pem
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Package manager files
+node_modules/
+package-lock.json
+yarn.lock
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS files
+Thumbs.db
+.DS_Store
+.Spotlight-V100
+.Trashes
+
+# Large data files
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Model downloads
+downloads/
+pretrained_models/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Kaggle
+kaggle.json
+.kaggle/
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Backup files
+backups/
+*.bak
+*.backup
+
+# Experimental files
+experimental/
+sandbox/
+
+# AI/ML specific
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Cloud deployment
+.vercel/
+.netlify/
+
+# But keep these important files
+!.gitkeep
+!README.md
+!CLAUDE.md
+!.devin/
+!.devin/**

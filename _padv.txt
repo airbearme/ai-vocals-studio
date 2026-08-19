@@ -1,0 +1,65 @@
+    def _advanced_training(self, speaker_name: str, model_name: str,
+                          progress_callback=None) -> str:
+        """
+        Train a real voice model.
+
+        The reference speaker's clips are analysed with the WORLD vocoder to
+        produce pitch statistics + an average spectral (timbre) envelope.
+        The resulting profile is saved as ``models/<model_name>/model.pth``
+        (a JSON payload the conversion engine can load and apply).
+        """
+        if not self.conversion_engine:
+            raise Exception("Voice conversion engine not available")
+
+        speaker_dir = Path(self.dataset_path) / speaker_name
+        if not speaker_dir.exists():
+            raise Exception(f"Speaker directory not found: {speaker_dir}")
+
+        raw_files = []
+        for ext in ("*.wav", "*.mp3", "*.flac", "*.m4a", "*.ogg"):
+            raw_files.extend(sorted(speaker_dir.glob(ext)))
+
+        processed_dir = speaker_dir / "processed"
+        processed = sorted(processed_dir.glob("*.wav")) if processed_dir.exists() else []
+        reference_files = [str(p) for p in processed] or [str(p) for p in raw_files]
+        if not reference_files:
+            raise Exception(f"No reference audio found under {speaker_dir}")
+
+        def _cb(msg, pct):
+            if progress_callback:
+                progress_callback(f"Training reference voice ({msg})",
+                                  45 + 30 * pct / 100)
+
+        profile = self.conversion_engine.extract_reference_profile(
+            reference_files, progress_cb=_cb)
+
+        model_dir = os.path.join(self.models_path, model_name)
+        os.makedirs(model_dir, exist_ok=True)
+        model_path = os.path.join(model_dir, "model.pth")
+        self.conversion_engine.save_profile(profile, model_path)
+
+        voice_profile = {
+            "speaker": speaker_name,
+            "model_name": model_name,
+            "type": "precision_voice_clone",
+            "engine": "world_vocoder",
+            "total_files": len(reference_files),
+            "audio_files": [os.path.basename(p) for p in reference_files],
+            "characteristics": {
+                "voice_type": "real_extracted_profile",
+                "pitch_mean_hz": profile["pitch"]["mean_hz"],
+                "pitch_median_hz": profile["pitch"]["median_hz"],
+                "pitch_dominant_hz": profile["pitch"]["dominant_hz"],
+                "male_band_median_hz": profile["pitch"]["male_band_median_hz"],
+                "spectral_centroid_hz": profile["spectral"]["mean_centroid_hz"],
+                "formants": profile.get("formants", {}),
+            },
+            "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        with open(os.path.join(model_dir, "voice_profile.json"), "w") as f:
+            json.dump(voice_profile, f, indent=2)
+        with open(os.path.join(model_dir, "config.json"), "w") as f:
+            json.dump({"spk": {speaker_name: 0}, "version": "4.0"}, f, indent=2)
+
+        print(f"✅ Real voice model built from {len(reference_files)} clips -> {model_path}")
+        return model_path

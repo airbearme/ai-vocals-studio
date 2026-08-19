@@ -1,0 +1,17 @@
+{
+  "conversion": {
+    "pitch_similarity": 0.0,
+    "timbre_similarity": 0.19835507716888037,
+    "rhythm_similarity": 0.5,
+    "energy_similarity": 0.08386820554733276,
+    "spectral_similarity": 0.4776992705020817,
+    "waveform_similarity": 0.5,
+    "overall_similarity": 0.27449065249304944,
+    "quality_rating": "unacceptable",
+    "additional_metrics": {
+      "snr_db": -22.49607276916504,
+      "harmonic_distortion": 2219.283935546875,
+      "dynamic_range_similarity": 0.0
+    }
+  }
+}

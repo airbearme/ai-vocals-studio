@@ -1,0 +1,68 @@
+{
+  "mcpServers": {
+    "comment": "MCP (Model Context Protocol) servers for AI Vocals Studio integration",
+    "note": "Currently no MCP servers are configured. Below are recommended services for voice cloning workflows:",
+    "recommended_servers": {
+      "audio-processing": {
+        "description": "External audio processing services for advanced effects and processing",
+        "use_cases": [
+          "Advanced audio effects and processing",
+          "Cloud-based audio enhancement",
+          "Professional mastering services",
+          "Real-time audio processing"
+        ],
+        "potential_providers": ["AWS Elemental", "Google Cloud Media API", "Azure Media Services"]
+      },
+      "cloud-storage": {
+        "description": "Cloud storage for large audio files and trained models",
+        "use_cases": [
+          "Store large audio datasets",
+          "Backup trained voice models",
+          "Share voice profiles across teams",
+          "Archive generation outputs"
+        ],
+        "potential_providers": ["AWS S3", "Google Cloud Storage", "Azure Blob Storage", "Backblaze B2"]
+      },
+      "model-hosting": {
+        "description": "Model hosting and serving for voice cloning models",
+        "use_cases": [
+          "Deploy voice models as APIs",
+          "Model versioning and management",
+          "Scalable model serving",
+          "A/B testing different models"
+        ],
+        "potential_providers": ["AWS SageMaker", "Google Cloud AI Platform", "Azure ML", "Hugging Face Endpoints"]
+      },
+      "database": {
+        "description": "Database for voice profiles, metadata, and generation history",
+        "use_cases": [
+          "Store voice profile metadata",
+          "Track generation history",
+          "Manage user preferences",
+          "Analytics and reporting"
+        ],
+        "potential_providers": ["PostgreSQL", "MongoDB", "Firebase", "Supabase"]
+      },
+      "api-management": {
+        "description": "API management for voice generation services",
+        "use_cases": [
+          "Rate limiting and authentication",
+          "API key management",
+          "Usage analytics",
+          "Service monitoring"
+        ],
+        "potential_providers": ["AWS API Gateway", "Google Cloud Endpoints", "Azure API Management"]
+      }
+    },
+    "configuration_note": "To add MCP servers, add entries to the 'mcpServers' object following the MCP server configuration format. See Devin CLI documentation for details.",
+    "example_configuration": {
+      "example-server": {
+        "command": "node",
+        "args": ["path/to/server.js"],
+        "env": {
+          "API_KEY": "your-api-key"
+        }
+      }
+    }
+  }
+}

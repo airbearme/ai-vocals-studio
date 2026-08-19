@@ -1,0 +1,46 @@
+    def generate_precision_vocals(self, text: str, model_name: str,
+                                output_name: str = None,
+                                pitch_target: float = None) -> Dict:
+        """
+        Generate vocals using the precision cloning model.
+
+        Text is synthesised with a neutral TTS engine, then converted into
+        the reference voice with the WORLD vocoder (real timbre/pitch
+        transfer - no placeholder / random-noise output).
+        """
+        print(f"🎤 Generating precision vocals using model: {model_name}")
+        try:
+            model_dir = os.path.join(self.models_path, model_name)
+            model_path = os.path.join(model_dir, "model.pth")
+            info_path = os.path.join(model_dir, "precision_model_info.json")
+
+            model_info = {}
+            if os.path.exists(info_path):
+                with open(info_path, 'r') as f:
+                    model_info = json.load(f)
+
+            if not self.conversion_engine or not os.path.exists(model_path):
+                return {'status': 'error',
+                        'error': 'Converted model not available - train it first'}
+
+            profile = self.conversion_engine.load_profile(model_path)
+
+            if not output_name:
+                timestamp = time.strftime('%Y%m%d_%H%M%S')
+                output_name = f"precision_vocal_{timestamp}"
+            output_path = os.path.join(self.output_path, f"{output_name}.wav")
+
+            self.conversion_engine.text_to_speech_with_voice(
+                text, profile, output_path, strength=0.9,
+                pitch_target=pitch_target)
+
+            return {
+                'status': 'success',
+                'output_path': output_path,
+                'model_info': model_info,
+                'text': text,
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            }
+        except Exception as e:
+            return {'status': 'error', 'error': str(e),
+                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')}

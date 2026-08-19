@@ -1,0 +1,235 @@
+{
+  "projectName": "AI Vocals Studio",
+  "version": "2.0.0",
+  "description": "Professional voice cloning and AI vocals generation system",
+  "paths": {
+    "dataset": "dataset",
+    "datasetRaw": "dataset_raw",
+    "models": "models",
+    "output": "output",
+    "outputs": "outputs",
+    "configs": "configs",
+    "filelists": "filelists",
+    "logs": "logs",
+    "input": "input"
+  },
+  "audio": {
+    "preferredFormats": ["wav", "flac", "mp3"],
+    "defaultSampleRate": 22050,
+    "highQualitySampleRate": 48000,
+    "defaultBitDepth": 16,
+    "highQualityBitDepth": 24,
+    "normalizationLevel": -1.0,
+    "silenceThreshold": -40,
+    "minClipDuration": 3.0,
+    "maxClipDuration": 30.0,
+    "targetSNR": 25,
+    "targetDynamicRange": 50
+  },
+  "training": {
+    "defaultEngine": "so-vits-svc",
+    "alternativeEngines": ["rvc", "xtts", "elevenlabs"],
+    "defaultBatchSize": 12,
+    "defaultLearningRate": 0.0001,
+    "defaultEpochs": 2000,
+    "validationSplit": 0.15,
+    "minTrainingDataMinutes": 10,
+    "recommendedTrainingDataMinutes": 30,
+    "optimalTrainingDataMinutes": 60,
+    "enableDataAugmentation": true,
+    "enableEarlyStopping": true,
+    "enableMixedPrecision": true,
+    "gradientAccumulation": 1
+  },
+  "generation": {
+    "defaultEngine": "qwen3-tts",
+    "alternativeEngines": ["elevenlabs", "xtts", "rvc", "so-vits-svc"],
+    "defaultOutputFormat": "wav",
+    "defaultSampleRate": 48000,
+    "defaultSpeed": 1.0,
+    "defaultPitchShift": 0,
+    "enablePostProcessing": true,
+    "enableQualityEnhancement": true,
+    "maxGenerationLength": 300,
+    "enableRealTimeGeneration": false
+  },
+  "quality": {
+    "acceptableMOS": 3.5,
+    "goodMOS": 4.0,
+    "excellentMOS": 4.5,
+    "acceptableSNR": 20,
+    "goodSNR": 25,
+    "excellentSNR": 30,
+    "acceptableSpectralCorrelation": 0.75,
+    "goodSpectralCorrelation": 0.85,
+    "excellentSpectralCorrelation": 0.95,
+    "enableQualityChecks": true,
+    "enableAutomatedTesting": true,
+    "requireHumanReview": false
+  },
+  "engines": {
+    "elevenlabs": {
+      "enabled": true,
+      "priority": 1,
+      "quality": "excellent",
+      "cost": "paid",
+      "requiresApiKey": true,
+      "useCase": "professional_voiceover",
+      "defaultModel": "eleven_multilingual_v2",
+      "apiEndpoint": "https://api.elevenlabs.io"
+    },
+    "qwen3-tts": {
+      "enabled": true,
+      "priority": 2,
+      "quality": "very_good",
+      "cost": "free",
+      "requiresApiKey": false,
+      "useCase": "rapid_prototyping",
+      "referenceDuration": 3.0,
+      "localProcessing": true
+    },
+    "xtts": {
+      "enabled": true,
+      "priority": 3,
+      "quality": "good",
+      "cost": "free",
+      "requiresApiKey": false,
+      "useCase": "general_purpose",
+      "modelSize": "1.8GB",
+      "localProcessing": true,
+      "zeroShot": true
+    },
+    "rvc": {
+      "enabled": true,
+      "priority": 4,
+      "quality": "excellent",
+      "cost": "free",
+      "requiresApiKey": false,
+      "useCase": "music_production",
+      "specialty": "rap_singing",
+      "localProcessing": true,
+      "requiresTraining": true
+    },
+    "so-vits-svc": {
+      "enabled": true,
+      "priority": 5,
+      "quality": "excellent",
+      "cost": "free",
+      "requiresApiKey": false,
+      "useCase": "singing_voice",
+      "specialty": "singing",
+      "localProcessing": true,
+      "requiresTraining": true,
+      "preferredSampleRate": 22050
+    }
+  },
+  "ui": {
+    "defaultApplication": "app_modern.py",
+    "theme": "dark",
+    "accentColor": "#00ff88",
+    "backgroundColor": "#1a1a1a",
+    "panelColor": "#2b2b2b",
+    "enableProgressIndicators": true,
+    "enableAutoRefresh": true,
+    "refreshInterval": 5000,
+    "maxConcurrentOperations": 3
+  },
+  "processing": {
+    "enableGPUIfAvailable": true,
+    "preferredGPU": "cuda",
+    "fallbackToCPU": true,
+    "maxMemoryUsage": 8192,
+    "enableCaching": true,
+    "cacheDirectory": ".cache",
+    "enableParallelProcessing": true,
+    "maxWorkers": 4,
+    "enableProfiling": false
+  },
+  "logging": {
+    "enabled": true,
+    "level": "INFO",
+    "directory": "logs",
+    "maxFileSize": "10MB",
+    "maxFiles": 10,
+    "enableConsoleLogging": true,
+    "enableFileLogging": true,
+    "logFormat": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "security": {
+    "enableApiKeyValidation": true,
+    "apiKeyEnvVar": "ELEVENLABS_API_KEY",
+    "enableModelEncryption": false,
+    "enableDataEncryption": false,
+    "maxUploadSize": 104857600,
+    "allowedFileTypes": ["wav", "mp3", "flac", "ogg", "m4a", "aiff", "aac"],
+    "enableRateLimiting": true,
+    "maxRequestsPerMinute": 60
+  },
+  "features": {
+    "enableVoiceConversion": true,
+    "enableTextToSpeech": true,
+    "enableAudioToAudio": true,
+    "enableBatchProcessing": true,
+    "enableRealTimeProcessing": false,
+    "enableVoiceBlending": false,
+    "enableProsodyControl": true,
+    "enableQualityAssessment": true,
+    "enableAutomatedTesting": true,
+    "enableModelOptimization": true
+  },
+  "development": {
+    "enableDebugMode": false,
+    "enableVerboseLogging": false,
+    "enableProfiling": false,
+    "enableTestMode": false,
+    "mockExternalServices": false,
+    "skipQualityChecks": false,
+    "enableExperimentalFeatures": false
+  },
+  "integration": {
+    "enableKaggleIntegration": true,
+    "enableGoogleColabSupport": true,
+    "enableStreamlitDeployment": true,
+    "enableDockerSupport": true,
+    "enableCloudTraining": true,
+    "preferredCloudProvider": "kaggle"
+  },
+  "validation": {
+    "enablePreTrainingValidation": true,
+    "enablePostTrainingValidation": true,
+    "enablePreGenerationValidation": true,
+    "enablePostGenerationValidation": true,
+    "strictMode": false,
+    "failOnWarnings": false
+  },
+  "optimization": {
+    "enableModelQuantization": false,
+    "enableModelPruning": false,
+    "enableAudioCompression": false,
+    "targetCompressionRatio": 0.5,
+    "enableLazyLoading": true,
+    "enableMemoryOptimization": true
+  },
+  "metadata": {
+    "includeGenerationMetadata": true,
+    "includeTrainingMetadata": true,
+    "includeQualityMetrics": true,
+    "includeProcessingStats": true,
+    "metadataFormat": "json"
+  },
+  "backup": {
+    "enableAutoBackup": true,
+    "backupInterval": 3600,
+    "backupDirectory": "backups",
+    "maxBackups": 10,
+    "backupModels": true,
+    "backupVoiceProfiles": true,
+    "backupConfigs": true
+  },
+  "experimental": {
+    "enableNewFeatures": false,
+    "enableBetaEngines": false,
+    "enableExperimentalOptimizations": false,
+    "enableResearchFeatures": false
+  }
+}
