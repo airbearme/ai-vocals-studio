@@ -47,6 +47,9 @@ class VoiceFeatureExtractor:
         try:
             # Load audio
             y, sr = librosa.load(audio_path, sr=self.target_sr, mono=True)
+            analysis_limit = int(sr * 4.0)
+            if len(y) > analysis_limit:
+                y = y[:analysis_limit]
             
             features = {
                 'basic_info': self._extract_basic_info(y, sr),

@@ -2,28 +2,35 @@
   "speaker": "Pacaveli",
   "model_name": "pacaveli",
   "type": "voice_clone",
+  "engine": "world_vocoder",
   "total_files": 5,
   "audio_files": [
-    "2Pac - Who Do You Believe In (Acapella) (1).wav",
-    "2Pac Still Ballin' OG Acapella.wav",
-    "2Pac - Don't Go To Sleep OG (Acapella) [HD].wav",
-    "2Pac & Lil' Mo - Niggaz Nature (Acapella).wav",
-    "2pac ft The Outlaw immortalz- Komradz so so krazy (acapella).wav"
+    "pacaveli_0000.wav",
+    "pacaveli_0001.wav",
+    "pacaveli_0002.wav",
+    "pacaveli_0003.wav",
+    "pacaveli_0004.wav"
   ],
   "characteristics": {
     "voice_type": "deep_male_rapper",
-    "pitch_shift": -4,
-    "speed": 1.08,
-    "reverb": 0.4,
-    "gain": 4,
-    "eq_low": 1.5,
-    "eq_mid": 0.8,
-    "eq_high": 0.9
+    "pitch_mean_hz": 212.4552426346454,
+    "pitch_median_hz": 214.8853708833391,
+    "pitch_dominant_hz": 230.0,
+    "male_band_median_hz": 197.91866202330309,
+    "pitch_conversion_target_hz": 150.0,
+    "spectral_centroid_hz": 461.74563312176656,
+    "formants": {
+      "F1": 107.666015625,
+      "F2": 301.46484375,
+      "F3": null,
+      "F4": null,
+      "count": 2
+    }
   },
   "persona": {
     "style": "west_coast_rap",
     "delivery": "aggressive_confident",
     "emotion": "intense"
   },
-  "created": "2026-08-17"
+  "created": "2026-08-19 09:34:31"
 }

@@ -9,68 +9,57 @@ import json
 import subprocess
 from pathlib import Path
 
-def train_voice_model():
-    """Train the voice model using your audio files"""
+from voice_conversion_engine import VoiceConversionEngine
+
+def train_voice_model(speaker_name="2Pac", model_name="2pac_custom_voice",
+                      consent_confirmed=False):
+    """Build a real reference profile for an authorized speaker."""
+    if not consent_confirmed:
+        print("❌ Speaker authorization must be confirmed before model creation")
+        return False
     
     print("🎤 Training 2Pac Voice Model")
     print("=" * 40)
     
     # Paths
-    speaker_dir = Path("dataset/2Pac")
-    model_dir = Path("models/2pac_custom_voice")
+    speaker_dir = Path("dataset") / speaker_name
+    model_dir = Path("models") / model_name
     
     # Check if model setup exists
     if not speaker_dir.exists():
         print("❌ Speaker directory not found!")
         return False
     
-    # Create a basic trained model file
-    print("🧠 Training model with your audio files...")
-    
-    # Simulate training process
-    audio_files = list(speaker_dir.glob("speaker_*"))
+    audio_files = (list(speaker_dir.glob("*.wav")) +
+                   list(speaker_dir.glob("*.mp3")) +
+                   list(speaker_dir.glob("*.flac")))
     total_files = len(audio_files)
-    
-    print(f"📊 Training with {total_files} audio files")
-    
-    # Create training progress
-    for i in range(1, 101):
-        progress = f"🔄 Training progress: {i}%"
-        if i % 20 == 0:
-            print(f"{progress} - Processing audio features...")
-        elif i % 50 == 0:
-            print(f"{progress} - Optimizing voice characteristics...")
-    
-    # Create model checkpoint
-    checkpoint = {
-        "model_name": "2pac_custom_voice",
-        "speaker": "2Pac",
-        "training_files": total_files,
-        "epochs_completed": 100,
-        "loss": 0.0234,
-        "status": "trained",
-        "created": "2026-02-23",
-        "voice_characteristics": {
-            "pitch_range": "low_baritone",
-            "timbre": "raspy",
-            "style": "rap_hip_hop",
-            "cadence": "rhythmic"
-        }
-    }
-    
-    # Save model checkpoint
-    with open(model_dir / "checkpoint.json", 'w') as f:
-        json.dump(checkpoint, f, indent=2)
-    
-    # Create a simple model file (placeholder for actual trained model)
+
+    if not audio_files:
+        print(f"❌ No audio files found in {speaker_dir}")
+        return False
+
+    print(f"🧠 Extracting a real voice profile from {total_files} audio files...")
+    engine = VoiceConversionEngine()
+    profile = engine.extract_reference_profile([str(path) for path in audio_files])
+    profile.update({
+        "speaker": speaker_name,
+        "model_name": model_name,
+        "type": "authorized_voice_profile",
+        "consent_confirmed": True,
+        "audio_files": [path.name for path in audio_files],
+    })
     model_file = model_dir / "model.pth"
-    model_file.touch()  # Create empty file as placeholder
+    engine.save_profile(profile, str(model_file))
+
+    with open(model_dir / "config.json", "w") as f:
+        json.dump({"spk": {speaker_name: 0}, "version": "world_profile"}, f, indent=2)
     
     print(f"\n✅ Training completed!")
     print(f"📍 Model saved: {model_file}")
     print(f"🎯 Voice characteristics captured")
     print(f"📊 Training files: {total_files}")
-    print(f"🎤 Voice: 2Pac")
+    print(f"🎤 Voice: {speaker_name}")
     
     return True
 
@@ -100,7 +89,8 @@ def update_app_models():
     print("🎤 Your 2Pac voice model is now available in AI Vocals Studio!")
 
 if __name__ == "__main__":
-    if train_voice_model():
+    consent = input("Confirm you have the speaker's permission (yes/no): ").strip().lower()
+    if train_voice_model(consent_confirmed=consent in {"yes", "y"}):
         update_app_models()
         print("\n🚀 SUCCESS! Your 2Pac voice model is ready to use!")
         print("📱 Launch AI Vocals Studio to generate vocals in 2Pac's voice!")

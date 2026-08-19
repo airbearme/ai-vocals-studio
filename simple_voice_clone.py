@@ -10,8 +10,15 @@ from pathlib import Path
 # Add current directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-def create_simple_voice_model(speaker_name, model_name):
-    """Create a simple voice model without heavy ML processing"""
+from voice_conversion_engine import VoiceConversionEngine
+
+
+def create_simple_voice_model(speaker_name, model_name, consent_confirmed=False):
+    """Build a real reference profile for an authorized speaker."""
+    if not consent_confirmed:
+        raise ValueError(
+            "Explicit speaker authorization is required before building a voice model"
+        )
     print(f"🎤 Creating voice model for: {speaker_name}")
     
     dataset_dir = Path('dataset')
@@ -34,29 +41,20 @@ def create_simple_voice_model(speaker_name, model_name):
     model_dir = models_dir / model_name
     model_dir.mkdir(exist_ok=True)
     
-    # Create a simple voice profile
-    voice_profile = {
+    engine = VoiceConversionEngine()
+    profile = engine.extract_reference_profile([str(path) for path in audio_files])
+    profile.update({
         "speaker": speaker_name,
         "model_name": model_name,
-        "type": "voice_clone",
-        "total_files": len(audio_files),
+        "type": "authorized_voice_profile",
+        "consent_confirmed": True,
         "audio_files": [f.name for f in audio_files],
-        "characteristics": {
-            "pitch_shift": -2,  # Default adjustments
-            "speed": 1.05,
-            "reverb": 0.3,
-            "gain": 2
-        },
-        "created": "2026-08-17"
-    }
-    
-    # Save voice profile
-    with open(model_dir / "voice_profile.json", 'w') as f:
-        json.dump(voice_profile, f, indent=2)
-    
-    # Create model.pth placeholder (will be used by app)
+    })
     model_file = model_dir / "model.pth"
-    model_file.write_text("")  # Empty file for placeholder
+    engine.save_profile(profile, str(model_file))
+
+    with open(model_dir / "voice_profile.json", 'w') as f:
+        json.dump(profile, f, indent=2)
     
     # Create config.json for SO-VITS compatibility
     config = {
@@ -93,6 +91,13 @@ def main():
         print("\n❌ No datasets with audio files found!")
         return
     
+    consent = input(
+        "Confirm you have the speaker's permission to build these models (yes/no): "
+    ).strip().lower()
+    if consent not in {'yes', 'y'}:
+        print("Model creation cancelled: speaker authorization was not confirmed.")
+        return
+
     # Create models for all available speakers
     for speaker in available_speakers:
         model_name = f"{speaker}_cloned"
@@ -100,7 +105,9 @@ def main():
         print(f"📦 Model name: {model_name}")
         
         try:
-            model_path = create_simple_voice_model(speaker, model_name)
+            model_path = create_simple_voice_model(
+                speaker, model_name, consent_confirmed=True
+            )
             
             if model_path:
                 print(f"\n✅ Voice model created successfully!")
