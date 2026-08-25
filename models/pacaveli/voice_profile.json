@@ -18,9 +18,9 @@
     "pitch_dominant_hz": 230.0,
     "male_band_median_hz": 197.91866202330309,
     "pitch_conversion_target_hz": 150.0,
-    "spectral_centroid_hz": 461.74563312176656,
+    "spectral_centroid_hz": 477.03832101221724,
     "formants": {
-      "F1": 107.666015625,
+      "F1": 129.19921875,
       "F2": 301.46484375,
       "F3": null,
       "F4": null,
