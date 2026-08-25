@@ -4,167 +4,261 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AI Vocals Studio</title>
-    <meta name="description" content="AI Vocals Studio voice cloning front door.">
+    <meta name="description" content="Vercel-hosted authorized voice cloning and voice-over generator.">
     <style>
       :root {
         color-scheme: dark;
-        --bg: #101214;
-        --panel: #171b1f;
-        --text: #eef3f0;
-        --muted: #a9b3ae;
-        --accent: #00d084;
-        --warn: #ffd166;
-        --line: #2a3036;
+        --bg: #0c0e0d;
+        --panel: #151a17;
+        --panel-2: #1d251f;
+        --text: #eef7f1;
+        --muted: #9eb0a5;
+        --line: #2b3830;
+        --accent: #19e68c;
+        --accent-2: #d7ff65;
+        --danger: #ff7777;
       }
-
-      * {
-        box-sizing: border-box;
-      }
-
+      * { box-sizing: border-box; }
       body {
         margin: 0;
         min-height: 100vh;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: var(--bg);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at 18% 10%, rgba(25, 230, 140, 0.18), transparent 34%),
+          radial-gradient(circle at 85% 20%, rgba(215, 255, 101, 0.12), transparent 28%),
+          linear-gradient(135deg, #080a09, var(--bg));
         color: var(--text);
       }
-
-      main {
-        min-height: 100vh;
-        display: grid;
-        align-items: center;
-        padding: 32px;
-      }
-
-      .shell {
-        width: min(920px, 100%);
-        margin: 0 auto;
-      }
-
-      h1 {
-        margin: 0 0 12px;
-        font-size: clamp(40px, 8vw, 78px);
-        line-height: 0.95;
-        font-weight: 800;
-      }
-
-      .lede {
-        margin: 0 0 28px;
-        max-width: 720px;
-        color: var(--muted);
-        font-size: 19px;
-        line-height: 1.55;
-      }
-
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-bottom: 28px;
-      }
-
-      a,
-      .button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 46px;
-        padding: 0 18px;
-        border-radius: 8px;
-        border: 1px solid var(--line);
-        color: var(--text);
-        text-decoration: none;
-        font-weight: 700;
-      }
-
-      .primary {
-        background: var(--accent);
-        color: #07110d;
-        border-color: var(--accent);
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-      }
-
-      .card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 18px;
-      }
-
-      .card strong {
-        display: block;
-        margin-bottom: 8px;
-      }
-
-      .card p {
-        margin: 0;
-        color: var(--muted);
-        line-height: 1.45;
-      }
-
-      .notice {
-        margin-top: 12px;
-        border-color: color-mix(in srgb, var(--warn), var(--line) 45%);
-      }
-
-      .notice strong {
-        color: var(--warn);
-      }
-
-      @media (max-width: 760px) {
-        main {
-          padding: 22px;
-        }
-
-        .grid {
-          grid-template-columns: 1fr;
-        }
-      }
+      main { width: min(1160px, calc(100% - 36px)); margin: 0 auto; padding: 46px 0 36px; }
+      .hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr); gap: 22px; align-items: end; margin-bottom: 22px; }
+      h1 { margin: 0; font-size: clamp(44px, 8vw, 92px); line-height: 0.88; letter-spacing: -0.07em; }
+      .lede { margin: 18px 0 0; color: var(--muted); font-size: 18px; line-height: 1.55; max-width: 760px; }
+      .badge { display: inline-flex; gap: 8px; align-items: center; padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; background: rgba(21, 26, 23, 0.72); color: var(--accent-2); font-weight: 700; }
+      .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; }
+      .card { border: 1px solid var(--line); border-radius: 22px; background: rgba(21, 26, 23, 0.88); box-shadow: 0 24px 90px rgba(0, 0, 0, 0.28); padding: 22px; }
+      label { display: block; margin: 0 0 8px; color: var(--muted); font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+      input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: #0f1311; color: var(--text); padding: 13px 14px; font: inherit; }
+      input[type="file"] { padding: 11px; }
+      textarea { min-height: 140px; resize: vertical; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+      .field { margin-bottom: 16px; }
+      .check { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; color: var(--muted); line-height: 1.45; }
+      .check input { width: auto; margin-top: 3px; }
+      button { width: 100%; border: 0; border-radius: 16px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #07100b; cursor: pointer; font: inherit; font-weight: 900; padding: 15px 18px; }
+      button:disabled { cursor: not-allowed; filter: grayscale(1); opacity: 0.55; }
+      .status { margin-top: 14px; color: var(--muted); min-height: 24px; white-space: pre-wrap; }
+      .status.error { color: var(--danger); }
+      .result audio { width: 100%; margin-top: 14px; }
+      .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+      .metric { background: var(--panel-2); border: 1px solid var(--line); border-radius: 14px; padding: 13px; }
+      .metric strong { display: block; font-size: 22px; }
+      .metric span { color: var(--muted); font-size: 12px; text-transform: uppercase; font-weight: 800; }
+      .small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+      .link { color: var(--accent-2); display: inline-block; margin-top: 8px; }
+      @media (max-width: 860px) { .hero, .grid, .row { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
     <main>
-      <div class="shell">
-        <h1>AI Vocals Studio</h1>
-        <p class="lede">
-          A production front door for authorized voice cloning and vocal generation.
-          Use the free Streamlit Cloud build for lightweight public hosting, then run the Docker backend
-          when you need heavier authorized cloning models.
-        </p>
-
-        <div class="actions">
-          <a class="primary" href="https://share.streamlit.io">Deploy Free Streamlit App</a>
-          <a href="https://github.com/coden607/ai-vocals-studio/tree/streamlit-cloud-free">Free Cloud Branch</a>
-          <a href="https://github.com/airbearme/ai-vocals-studio">Repository</a>
-        </div>
-
-        <section class="grid" aria-label="Studio capabilities">
-          <div class="card">
-            <strong>One-click workflow</strong>
-            <p>Upload authorized reference audio, confirm permission, enter target text, then generate a free preview.</p>
-          </div>
-          <div class="card">
-            <strong>Advanced backend</strong>
-            <p>Qwen3-TTS, Docker health checks, SoX, and the local launch script remain in the main backend.</p>
-          </div>
-          <div class="card">
-            <strong>Production ready</strong>
-            <p>Free Streamlit Cloud for the public app; Docker-capable hosting for heavier voice models.</p>
-          </div>
-        </section>
-
-        <section class="card notice">
-          <strong>Permission required</strong>
-          <p>
-            Only upload or clone voices you own, created yourself, or have explicit written permission/license to use.
+      <section class="hero">
+        <div>
+          <span class="badge">Vercel native · no Streamlit</span>
+          <h1>Voice-over machine</h1>
+          <p class="lede">
+            Upload authorized voice samples, enter the line, and generate a cloned voice-over from the Vercel app.
+            Heavy local XTTS/RVC engines remain in the repo for Docker/local use; this hosted version uses cloud voice infrastructure that fits Vercel serverless.
           </p>
-        </section>
-      </div>
+        </div>
+        <div class="card small">
+          <strong>Accuracy rule:</strong> clean, single-speaker WAV/FLAC samples produce the best clones.
+          Instant cloud cloning is fast; professional fine-tuned voice models are still the path for the closest production match.
+        </div>
+      </section>
+      <section class="grid">
+        <form id="voiceForm" class="card">
+          <div class="row">
+            <div class="field">
+              <label for="apiKey">ElevenLabs API key</label>
+              <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Uses Vercel env if blank">
+            </div>
+            <div class="field">
+              <label for="voiceName">Voice label</label>
+              <input id="voiceName" name="voiceName" value="Authorized Voice" maxlength="80">
+            </div>
+          </div>
+          <div class="field">
+            <label for="voiceFiles">Voice samples</label>
+            <input id="voiceFiles" name="voiceFiles" type="file" accept="audio/*" multiple required>
+            <p class="small">Use 1-3 clean clips. For Vercel uploads, keep the combined size small; for large datasets use the Docker/local app.</p>
+          </div>
+          <div class="field">
+            <label for="scriptText">Voice-over text</label>
+            <textarea id="scriptText" name="scriptText" required placeholder="Type what the cloned voice should say..."></textarea>
+          </div>
+          <div class="field">
+            <label for="bedFile">Optional beat/song bed for browser mix</label>
+            <input id="bedFile" name="bedFile" type="file" accept="audio/*">
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="stability">Stability</label>
+              <select id="stability" name="stability">
+                <option value="0.38">Expressive</option>
+                <option value="0.55" selected>Balanced</option>
+                <option value="0.72">Stable</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="similarity">Similarity boost</label>
+              <select id="similarity" name="similarity">
+                <option value="0.78">Natural</option>
+                <option value="0.9" selected>High match</option>
+                <option value="0.97">Maximum match</option>
+              </select>
+            </div>
+          </div>
+          <div class="field check">
+            <input id="permission" name="permission" type="checkbox" required>
+            <span>I own this voice or have explicit written permission/license to clone and synthesize it.</span>
+          </div>
+          <div class="field check">
+            <input id="deleteVoice" name="deleteVoice" type="checkbox" checked>
+            <span>Delete the temporary cloud voice after generation.</span>
+          </div>
+          <button id="generateBtn" type="submit">Clone Voice + Generate Voice-Over</button>
+          <div id="status" class="status"></div>
+        </form>
+        <aside class="card result">
+          <h2>Output</h2>
+          <p class="small">The generated voice-over appears here. If you upload a bed, the browser also creates a rough mixed preview without needing Streamlit.</p>
+          <audio id="voiceAudio" controls hidden></audio>
+          <a id="downloadVoice" class="link" hidden download="voiceover.mp3">Download voice-over MP3</a>
+          <audio id="mixAudio" controls hidden></audio>
+          <a id="downloadMix" class="link" hidden download="voiceover-mix.wav">Download browser mix WAV</a>
+          <div class="metrics">
+            <div class="metric"><strong id="engineMetric">-</strong><span>Engine</span></div>
+            <div class="metric"><strong id="qualityMetric">-</strong><span>Input fit</span></div>
+            <div class="metric"><strong id="filesMetric">-</strong><span>Samples</span></div>
+          </div>
+          <p class="small">Hosted Vercel generation uses ElevenLabs IVC + TTS. The local repo still includes Qwen, XTTS, RVC, Demucs, and DSP for heavier workflows.</p>
+        </aside>
+      </section>
     </main>
+    <script>
+      const form = document.getElementById("voiceForm");
+      const statusEl = document.getElementById("status");
+      const button = document.getElementById("generateBtn");
+      const voiceAudio = document.getElementById("voiceAudio");
+      const mixAudio = document.getElementById("mixAudio");
+      const downloadVoice = document.getElementById("downloadVoice");
+      const downloadMix = document.getElementById("downloadMix");
+      function setStatus(message, isError = false) {
+        statusEl.textContent = message;
+        statusEl.classList.toggle("error", isError);
+      }
+      function readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+      function estimateFit(files) {
+        const totalMb = files.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024);
+        const countScore = Math.min(1, files.length / 3);
+        const sizeScore = Math.min(1, totalMb / 3);
+        return Math.round((0.45 * countScore + 0.55 * sizeScore) * 100);
+      }
+      async function mixWithBed(voiceBlob, bedFile) {
+        const ctx = new OfflineAudioContext(2, 1, 44100);
+        const [voiceBuf, bedBuf] = await Promise.all([
+          voiceBlob.arrayBuffer().then((buf) => ctx.decodeAudioData(buf)),
+          bedFile.arrayBuffer().then((buf) => ctx.decodeAudioData(buf)),
+        ]);
+        const sr = 44100;
+        const offline = new OfflineAudioContext(2, Math.ceil(Math.max(voiceBuf.duration, bedBuf.duration) * sr), sr);
+        const bed = offline.createBufferSource();
+        bed.buffer = bedBuf;
+        const bedGain = offline.createGain();
+        bedGain.gain.value = 0.72;
+        bed.connect(bedGain).connect(offline.destination);
+        const voice = offline.createBufferSource();
+        voice.buffer = voiceBuf;
+        voice.connect(offline.destination);
+        bed.start(0);
+        voice.start(0);
+        return audioBufferToWav(await offline.startRendering());
+      }
+      function audioBufferToWav(buffer) {
+        const channels = buffer.numberOfChannels;
+        const out = new ArrayBuffer(buffer.length * channels * 2 + 44);
+        const view = new DataView(out);
+        const write = (offset, string) => { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); };
+        write(0, "RIFF"); view.setUint32(4, 36 + buffer.length * channels * 2, true); write(8, "WAVE");
+        write(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, channels, true);
+        view.setUint32(24, buffer.sampleRate, true); view.setUint32(28, buffer.sampleRate * channels * 2, true);
+        view.setUint16(32, channels * 2, true); view.setUint16(34, 16, true); write(36, "data");
+        view.setUint32(40, buffer.length * channels * 2, true);
+        let offset = 44;
+        for (let i = 0; i < buffer.length; i++) {
+          for (let ch = 0; ch < channels; ch++) {
+            const sample = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
+            view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+            offset += 2;
+          }
+        }
+        return new Blob([out], { type: "audio/wav" });
+      }
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const files = [...document.getElementById("voiceFiles").files];
+        const bedFile = document.getElementById("bedFile").files[0];
+        if (!files.length) return setStatus("Upload at least one voice sample.", true);
+        button.disabled = true;
+        voiceAudio.hidden = true; mixAudio.hidden = true; downloadVoice.hidden = true; downloadMix.hidden = true;
+        try {
+          setStatus("Reading voice samples...");
+          const encoded = [];
+          for (const file of files) encoded.push({ name: file.name, type: file.type || "application/octet-stream", size: file.size, data: await readFileAsBase64(file) });
+          setStatus("Cloning voice and generating voice-over on Vercel...");
+          const response = await fetch("/api/clone-and-speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              apiKey: document.getElementById("apiKey").value,
+              voiceName: document.getElementById("voiceName").value,
+              text: document.getElementById("scriptText").value,
+              permission: document.getElementById("permission").checked,
+              deleteVoice: document.getElementById("deleteVoice").checked,
+              stability: Number(document.getElementById("stability").value),
+              similarity: Number(document.getElementById("similarity").value),
+              files: encoded,
+            }),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) throw new Error(payload.error || "Generation failed");
+          const voiceBlob = await fetch(`data:${payload.mediaType};base64,${payload.audioBase64}`).then((r) => r.blob());
+          const voiceUrl = URL.createObjectURL(voiceBlob);
+          voiceAudio.src = voiceUrl; voiceAudio.hidden = false;
+          downloadVoice.href = voiceUrl; downloadVoice.hidden = false;
+          document.getElementById("engineMetric").textContent = payload.engine;
+          document.getElementById("qualityMetric").textContent = `${estimateFit(files)}%`;
+          document.getElementById("filesMetric").textContent = String(files.length);
+          if (bedFile) {
+            setStatus("Creating browser-side beat/song mix...");
+            const mixBlob = await mixWithBed(voiceBlob, bedFile);
+            const mixUrl = URL.createObjectURL(mixBlob);
+            mixAudio.src = mixUrl; mixAudio.hidden = false;
+            downloadMix.href = mixUrl; downloadMix.hidden = false;
+          }
+          setStatus(`Ready. Voice ID ${payload.voiceId}${payload.deleted ? " was deleted after generation." : " was kept in ElevenLabs."}`);
+        } catch (err) {
+          setStatus(err.message || String(err), true);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
   </body>
 </html>
