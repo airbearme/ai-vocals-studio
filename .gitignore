@@ -85,3 +85,5 @@ logs/
 .env*
 supabase/.temp/
 local_backups/
+.local_voiceover_storage/
+vercel_frontdoor/.local_voiceover_storage/

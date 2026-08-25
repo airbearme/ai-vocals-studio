@@ -1,4 +1,4 @@
-import { createJob, uploadObject, supabaseConfig } from "./_supabase.js";
+import { createJob, uploadObject, storageConfig } from "./_supabase.js";
 import { randomUUID } from "node:crypto";
 
 export const config = {
@@ -37,9 +37,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (!supabaseConfig().enabled) {
-      return sendJson(res, 400, { ok: false, error: "Supabase must be configured before worker jobs can be queued." });
-    }
+    const storage = storageConfig();
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     const files = Array.isArray(body.files) ? body.files : [];
     const text = String(body.text || "").trim();
@@ -118,12 +116,13 @@ export default async function handler(req, res) {
       },
       report: {
         queuedBy: "vercel",
+        storageProvider: storage.provider,
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
         referenceMetrics: body.referenceMetrics || null,
       },
     });
 
-    return sendJson(res, 200, { ok: true, job, files: storedFiles });
+    return sendJson(res, 200, { ok: true, provider: storage.provider, job, files: storedFiles, targetFile: storedTarget });
   } catch (error) {
     return sendJson(res, 500, { ok: false, error: error.message || String(error) });
   }

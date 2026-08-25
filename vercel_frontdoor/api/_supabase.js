@@ -1,4 +1,12 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import pathModule from "node:path";
+
 const DEFAULT_BUCKET = "voiceovers";
+
+function localRoot() {
+  return pathModule.resolve(process.env.LOCAL_STORAGE_DIR || pathModule.join(process.cwd(), ".local_voiceover_storage"));
+}
 
 export function supabaseConfig() {
   const url = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
@@ -9,6 +17,45 @@ export function supabaseConfig() {
     key,
     bucket: String(process.env.SUPABASE_STORAGE_BUCKET || DEFAULT_BUCKET),
   };
+}
+
+export function storageConfig() {
+  const supabase = supabaseConfig();
+  return {
+    enabled: true,
+    provider: supabase.enabled ? "supabase" : "local",
+    localRoot: localRoot(),
+    supabase,
+  };
+}
+
+async function ensureLocalRoot() {
+  const root = localRoot();
+  await fs.mkdir(pathModule.join(root, "objects"), { recursive: true });
+  return root;
+}
+
+async function readLocalJobs() {
+  const root = await ensureLocalRoot();
+  const jobsPath = pathModule.join(root, "jobs.json");
+  try {
+    return JSON.parse(await fs.readFile(jobsPath, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function writeLocalJobs(jobs) {
+  const root = await ensureLocalRoot();
+  const jobsPath = pathModule.join(root, "jobs.json");
+  const tmpPath = `${jobsPath}.${process.pid}.tmp`;
+  await fs.writeFile(tmpPath, JSON.stringify(jobs, null, 2));
+  await fs.rename(tmpPath, jobsPath);
+}
+
+function localPublicUrl(objectPath) {
+  return `/api/local-object?path=${encodeURIComponent(objectPath)}`;
 }
 
 export async function supabaseRequest(path, options = {}) {
@@ -28,7 +75,26 @@ export async function supabaseRequest(path, options = {}) {
 }
 
 export async function createJob(payload) {
-  if (!supabaseConfig().enabled) return null;
+  if (!supabaseConfig().enabled) {
+    const now = new Date().toISOString();
+    const job = {
+      id: randomUUID(),
+      created_at: now,
+      updated_at: now,
+      error: null,
+      output_path: null,
+      output_url: null,
+      ...payload,
+      report: {
+        ...(payload.report || {}),
+        storageProvider: "local",
+      },
+    };
+    const jobs = await readLocalJobs();
+    jobs.unshift(job);
+    await writeLocalJobs(jobs);
+    return job;
+  }
   const response = await supabaseRequest("/rest/v1/voiceover_jobs", {
     method: "POST",
     headers: {
@@ -42,7 +108,19 @@ export async function createJob(payload) {
 }
 
 export async function updateJob(id, patch) {
-  if (!id || !supabaseConfig().enabled) return null;
+  if (!id) return null;
+  if (!supabaseConfig().enabled) {
+    const jobs = await readLocalJobs();
+    const index = jobs.findIndex((job) => String(job.id) === String(id));
+    if (index < 0) return null;
+    jobs[index] = {
+      ...jobs[index],
+      ...patch,
+      updated_at: new Date().toISOString(),
+    };
+    await writeLocalJobs(jobs);
+    return jobs[index];
+  }
   const response = await supabaseRequest(`/rest/v1/voiceover_jobs?id=eq.${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: {
@@ -55,10 +133,17 @@ export async function updateJob(id, patch) {
   return rows?.[0] || null;
 }
 
-export async function uploadObject(path, buffer, contentType = "application/octet-stream") {
+export async function uploadObject(objectPath, buffer, contentType = "application/octet-stream") {
   const cfg = supabaseConfig();
-  if (!cfg.enabled) return null;
-  const uploadPath = `/storage/v1/object/${encodeURIComponent(cfg.bucket)}/${path}`;
+  if (!cfg.enabled) {
+    const root = await ensureLocalRoot();
+    const normalized = String(objectPath).replace(/^\/+/, "");
+    const target = pathModuleSafe(pathModule.join(root, "objects"), normalized);
+    await fs.mkdir(pathModule.dirname(target), { recursive: true });
+    await fs.writeFile(target, Buffer.from(buffer));
+    return localPublicUrl(normalized);
+  }
+  const uploadPath = `/storage/v1/object/${encodeURIComponent(cfg.bucket)}/${objectPath}`;
   await supabaseRequest(uploadPath, {
     method: "POST",
     headers: {
@@ -75,9 +160,25 @@ export async function uploadAudio(path, buffer, contentType = "audio/mpeg") {
 }
 
 export async function listJobs(limit = 12) {
-  if (!supabaseConfig().enabled) return [];
+  if (!supabaseConfig().enabled) {
+    const jobs = await readLocalJobs();
+    return jobs.slice(0, Number(limit) || 12);
+  }
   const response = await supabaseRequest(
     `/rest/v1/voiceover_jobs?select=id,created_at,status,voice_name,engine,output_url,report,error&order=created_at.desc&limit=${Number(limit) || 12}`,
   );
   return response.json();
+}
+
+export function localObjectPath(objectPath) {
+  return pathModuleSafe(pathModule.join(localRoot(), "objects"), String(objectPath || "").replace(/^\/+/, ""));
+}
+
+function pathModuleSafe(root, ...segments) {
+  const target = pathModule.resolve(root, ...segments);
+  const base = pathModule.resolve(root);
+  if (target !== base && !target.startsWith(`${base}${pathModule.sep}`)) {
+    throw new Error("Invalid local storage path.");
+  }
+  return target;
 }

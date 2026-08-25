@@ -54,6 +54,43 @@ A beautiful, dark-themed AI voice cloning and generation application with advanc
    - Configure output settings
    - Click "Generate Vocals"
 
+## Vercel + Worker Deployment
+
+The Vercel frontdoor lives in `vercel_frontdoor/` and supports two storage backends:
+
+- Supabase: production persistence for queued jobs, uploaded voice samples, target songs/audio, outputs, and reports.
+- Local filesystem: fallback for local/self-hosted runs when Supabase env vars are not set.
+
+Production setup:
+
+```bash
+scripts/setup_vercel_supabase.sh
+cd vercel_frontdoor
+npx vercel --prod --yes --scope stephens-projects-8fbc16d0
+```
+
+Worker setup:
+
+```bash
+scripts/run_supabase_worker.sh
+```
+
+Local fallback setup:
+
+```bash
+cd vercel_frontdoor
+env -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY npx vercel dev
+```
+
+In another terminal:
+
+```bash
+cd /path/to/ai-vocals-studio
+env -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY python supabase_worker.py
+```
+
+Local jobs and objects are stored under `vercel_frontdoor/.local_voiceover_storage/`. This directory is ignored by git.
+
 ## 📁 Supported Audio Formats
 
 - **WAV** - High quality uncompressed audio

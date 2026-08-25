@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import tempfile
+import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -15,6 +16,14 @@ import requests
 
 
 DEFAULT_BUCKET = "voiceovers"
+WORKER_JOB_TYPES = {"local_worker_voiceover", "local_worker_audio_replace"}
+
+
+def local_storage_root() -> Path:
+    return Path(
+        os.environ.get("LOCAL_STORAGE_DIR")
+        or Path("vercel_frontdoor/.local_voiceover_storage")
+    ).resolve()
 
 
 class SupabaseClient:
@@ -43,14 +52,15 @@ class SupabaseClient:
             "?select=*"
             "&status=eq.queued"
             "&order=created_at.asc"
-            "&limit=1",
+            "&limit=20",
         )
         rows = response.json()
-        if not rows:
-            return None
-        job = rows[0]
-        updated = self.update_job(job["id"], {"status": "running", "engine": "local best available"})
-        return updated or job
+        for job in rows:
+            if str(job.get("job_type") or "") not in WORKER_JOB_TYPES:
+                continue
+            updated = self.update_job(job["id"], {"status": "running", "engine": "local best available"})
+            return updated or job
+        return None
 
     def update_job(self, job_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
         response = self.request(
@@ -80,6 +90,75 @@ class SupabaseClient:
         return f"{self.url}/storage/v1/object/public/{quote(self.bucket)}/{quote(object_path, safe='/')}"
 
 
+class LocalQueueClient:
+    def __init__(self) -> None:
+        self.root = local_storage_root()
+        self.objects_dir = self.root / "objects"
+        self.jobs_path = self.root / "jobs.json"
+        self.objects_dir.mkdir(parents=True, exist_ok=True)
+
+    def _read_jobs(self) -> list[dict[str, Any]]:
+        try:
+            return json.loads(self.jobs_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return []
+
+    def _write_jobs(self, jobs: list[dict[str, Any]]) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        tmp = self.root / f"jobs.json.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        tmp.write_text(json.dumps(jobs, indent=2), encoding="utf-8")
+        tmp.replace(self.jobs_path)
+
+    def claim_job(self) -> dict[str, Any] | None:
+        jobs = self._read_jobs()
+        for index, job in enumerate(jobs):
+            if job.get("status") != "queued":
+                continue
+            if str(job.get("job_type") or "") not in WORKER_JOB_TYPES:
+                continue
+            jobs[index] = {
+                **job,
+                "status": "running",
+                "engine": "local best available",
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            self._write_jobs(jobs)
+            return jobs[index]
+        return None
+
+    def update_job(self, job_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
+        jobs = self._read_jobs()
+        for index, job in enumerate(jobs):
+            if str(job.get("id")) != str(job_id):
+                continue
+            jobs[index] = {
+                **job,
+                **patch,
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            self._write_jobs(jobs)
+            return jobs[index]
+        return None
+
+    def _object_path(self, object_path: str) -> Path:
+        target = (self.objects_dir / object_path.lstrip("/")).resolve()
+        if self.objects_dir.resolve() != target and self.objects_dir.resolve() not in target.parents:
+            raise RuntimeError("Invalid local object path.")
+        return target
+
+    def download_object(self, object_path: str, target: Path) -> None:
+        source = self._object_path(object_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+
+    def upload_object(self, object_path: str, source: Path, content_type: str = "audio/wav") -> str:
+        del content_type
+        target = self._object_path(object_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        return f"/api/local-object?path={quote(object_path, safe='')}"
+
+
 def _content_type(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix == ".mp3":
@@ -91,7 +170,7 @@ def _content_type(path: Path) -> str:
     return "audio/wav"
 
 
-def process_job(client: SupabaseClient, job: dict[str, Any], work_root: Path) -> None:
+def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], work_root: Path) -> None:
     from clone_any_voice import convert_target_audio, synthesize_voiceover
     from voice_cloner import build_voice_profile_from_sources
 
@@ -131,7 +210,7 @@ def process_job(client: SupabaseClient, job: dict[str, Any], work_root: Path) ->
         name=voice_name,
         source_paths=local_sources,
         source_type="speech",
-        description=f"Supabase queued job {job_id}",
+        description=f"Queued worker job {job_id}",
         voices_dir=job_dir / "voices",
         has_permission=True,
     )
@@ -178,7 +257,12 @@ def main() -> int:
     parser.add_argument("--work-dir", default="outputs/supabase_worker")
     args = parser.parse_args()
 
-    client = SupabaseClient()
+    if os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE_KEY"):
+        client: SupabaseClient | LocalQueueClient = SupabaseClient()
+        print("Using Supabase queue/storage.")
+    else:
+        client = LocalQueueClient()
+        print(f"Using local queue/storage at {client.root}.")
     work_root = Path(args.work_dir)
     work_root.mkdir(parents=True, exist_ok=True)
 

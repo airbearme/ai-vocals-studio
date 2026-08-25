@@ -1,4 +1,4 @@
-import { createJob, updateJob, uploadAudio, supabaseConfig } from "./_supabase.js";
+import { createJob, updateJob, uploadAudio, storageConfig } from "./_supabase.js";
 import { randomUUID } from "node:crypto";
 
 const ELEVEN_API = "https://api.elevenlabs.io/v1";
@@ -54,6 +54,7 @@ export default async function handler(req, res) {
   }
   let job = null;
   try {
+    const storage = storageConfig();
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     const apiKey = String(body.apiKey || process.env.ELEVENLABS_API_KEY || "").trim();
     const files = Array.isArray(body.files) ? body.files : [];
@@ -94,7 +95,7 @@ export default async function handler(req, res) {
       })),
       report: {
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
-        supabaseConfigured: supabaseConfig().enabled,
+        storageProvider: storage.provider,
         referenceMetrics: body.referenceMetrics || null,
       },
     });
@@ -155,7 +156,7 @@ export default async function handler(req, res) {
         requiresVerification: Boolean(voice.requires_verification),
         sampleCount: files.length,
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
-        storage: outputUrl ? "supabase" : "inline",
+        storage: outputUrl ? storage.provider : "inline",
         referenceMetrics: body.referenceMetrics || null,
       },
     });
@@ -170,6 +171,7 @@ export default async function handler(req, res) {
       mediaType: "audio/mpeg",
       audioBase64: audioBuffer.toString("base64"),
       outputUrl,
+      storageProvider: storage.provider,
       report: {
         sampleCount: files.length,
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
