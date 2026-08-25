@@ -57,6 +57,7 @@ def _sidecar_importable(module_name: str) -> tuple[bool, str]:
     python = _sidecar_python(module_name)
     if not python:
         return False, "no Python 3.10/3.11 sidecar configured"
+    timeout = 90 if module_name == "rvc_python" else 20
     try:
         result = subprocess.run(
             [str(python), "-c", f"import {module_name}"],
@@ -64,7 +65,7 @@ def _sidecar_importable(module_name: str) -> tuple[bool, str]:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=20,
+            timeout=timeout,
             check=False,
         )
     except Exception as exc:

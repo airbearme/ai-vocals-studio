@@ -30,9 +30,11 @@ if command -v uv >/dev/null 2>&1; then
   uv pip install --python venv_xtts_engines/bin/python -r requirements_voice_engines_py310.txt
   printf '%s\n' "venv_xtts_engines/bin/python" > .xtts_engine_sidecar
 
+  echo "Installing Python 3.10 with uv for RVC sidecar..."
+  uv python install 3.10
   echo "Creating RVC sidecar..."
-  uv venv --python 3.11 venv_rvc_engines
-  uv pip install --python venv_rvc_engines/bin/python --upgrade pip setuptools wheel
+  uv venv --python 3.10 venv_rvc_engines
+  uv pip install --python venv_rvc_engines/bin/python --upgrade pip "setuptools<81" wheel
   uv pip install --python venv_rvc_engines/bin/python -r requirements_rvc_sidecar.txt
   printf '%s\n' "venv_rvc_engines/bin/python" > .rvc_engine_sidecar
 elif command -v python3.11 >/dev/null 2>&1 || command -v python3.10 >/dev/null 2>&1; then
@@ -46,7 +48,7 @@ elif command -v python3.11 >/dev/null 2>&1 || command -v python3.10 >/dev/null 2
 
   echo "Creating RVC sidecar with $SIDECAR_PY..."
   "$SIDECAR_PY" -m venv venv_rvc_engines
-  venv_rvc_engines/bin/python -m pip install --upgrade pip setuptools wheel
+  venv_rvc_engines/bin/python -m pip install --upgrade pip "setuptools<81" wheel
   venv_rvc_engines/bin/python -m pip install -r requirements_rvc_sidecar.txt
   printf '%s\n' "venv_rvc_engines/bin/python" > .rvc_engine_sidecar
 else
