@@ -141,6 +141,14 @@
           </div>
           <div class="row">
             <div class="field">
+              <label for="qualityTarget">Quality target</label>
+              <select id="qualityTarget" name="qualityTarget">
+                <option value="pro" selected>Pro-match: strict, near-perfect target</option>
+                <option value="studio">Studio: balanced quality gate</option>
+                <option value="draft">Draft: allow rough tests</option>
+              </select>
+            </div>
+            <div class="field">
               <label for="stability">Stability</label>
               <select id="stability" name="stability">
                 <option value="0.38">Expressive</option>
@@ -159,7 +167,7 @@
           </div>
           <div class="field check">
             <input id="studioQuality" name="studioQuality" type="checkbox" checked>
-            <span>Studio-match mode: block low-quality samples instead of generating a weak clone.</span>
+            <span>Block low-quality samples instead of generating a weak clone.</span>
           </div>
           <div class="field check">
             <input id="permission" name="permission" type="checkbox" required>
@@ -276,6 +284,21 @@
         box.className = `readiness small ${level}`;
         box.textContent = `Clone readiness: ${metrics.fitScore}% · ${metrics.totalDurationS}s voice · RMS ${metrics.averageRms}.${clipping} ${recommendation}`;
       }
+      function qualityTargetReasons(metrics, target) {
+        if (!metrics || target === "draft" || !document.getElementById("studioQuality").checked) return [];
+        const reasons = [];
+        const fileCount = Array.isArray(metrics.files) ? metrics.files.length : 0;
+        if (metrics.totalDurationS < 20) reasons.push("Upload at least 20 seconds of clean single-speaker voice.");
+        if (metrics.fitScore < 60) reasons.push("Studio mode requires input fit of 60% or higher.");
+        if (metrics.maxClippingFraction > 0.02) reasons.push("Samples appear clipped/distorted.");
+        if (target === "pro") {
+          if (metrics.totalDurationS < 90) reasons.push("Pro-match requires 90+ seconds of clean authorized reference voice.");
+          if (fileCount < 3) reasons.push("Pro-match requires at least 3 separate reference clips.");
+          if (metrics.fitScore < 85) reasons.push("Pro-match requires input fit of 85% or higher.");
+          if (metrics.maxClippingFraction > 0.005) reasons.push("Pro-match needs unclipped lower-gain audio.");
+        }
+        return reasons;
+      }
       function syncTaskUi() {
         const taskMode = document.getElementById("taskMode").value;
         const isVoiceover = taskMode === "voiceover";
@@ -366,9 +389,9 @@
           setStatus("Analyzing reference quality...");
           latestReferenceMetrics = await analyzeReferenceFiles(files);
           renderReadiness(latestReferenceMetrics);
-          if (document.getElementById("studioQuality").checked && latestReferenceMetrics.fitScore < 60) {
-            throw new Error("Studio-match mode needs better voice samples. Upload cleaner/longer single-speaker clips or disable studio-match mode for a rough draft.");
-          }
+          const qualityTarget = document.getElementById("studioQuality").checked ? document.getElementById("qualityTarget").value : "draft";
+          const qualityReasons = qualityTargetReasons(latestReferenceMetrics, qualityTarget);
+          if (qualityReasons.length) throw new Error(`${qualityTarget === "pro" ? "Pro-match" : "Studio-match"} needs better voice samples. ${qualityReasons.join(" ")}`);
           setStatus("Reading voice samples...");
           const encoded = [];
           for (const file of files) encoded.push({ name: file.name, type: file.type || "application/octet-stream", size: file.size, data: await readFileAsBase64(file) });
@@ -388,6 +411,7 @@
               stability: Number(document.getElementById("stability").value),
               similarity: Number(document.getElementById("similarity").value),
               studioQuality: document.getElementById("studioQuality").checked,
+              qualityTarget,
               separation: document.getElementById("separation").value,
               referenceMetrics: latestReferenceMetrics,
               files: encoded,

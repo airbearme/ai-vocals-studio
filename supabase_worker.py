@@ -181,6 +181,9 @@ def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], 
     text = str(job.get("text") or "").strip()
     settings = job.get("settings") or {}
     mood = str(settings.get("mood") or "default")
+    quality_target = str(settings.get("qualityTarget") or "studio")
+    if quality_target not in {"draft", "studio", "pro"}:
+        quality_target = "studio"
     vocals_gain_db = float(settings.get("vocalsGainDb") or settings.get("voiceGainDb") or 0.0)
     separation = str(settings.get("separation") or os.environ.get("SONG_SEPARATION_METHOD") or "auto")
     if separation not in {"auto", "demucs", "center"}:
@@ -237,10 +240,11 @@ def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], 
                 output_dir,
                 vocals_gain_db,
                 separation,
+                quality_target,
             ) or ""
         )
     else:
-        output_audio = Path(synthesize_voiceover(profile, text, output_dir, mood=mood) or "")
+        output_audio = Path(synthesize_voiceover(profile, text, output_dir, mood=mood, quality_target=quality_target) or "")
     if not output_audio.exists():
         raise RuntimeError("Local voice pipeline did not produce output audio.")
 
@@ -248,6 +252,12 @@ def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], 
     report = {}
     if report_path.exists():
         report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["quality_target"] = quality_target
+    report["enforcement"] = (
+        "pro-match requires strict reference quality and neural/RVC conversion for replacement jobs"
+        if quality_target == "pro"
+        else f"{quality_target} quality target"
+    )
     storage_path = f"completed/{job_id}/{output_audio.name}"
     output_url = client.upload_object(storage_path, output_audio, _content_type(output_audio))
     client.update_job(

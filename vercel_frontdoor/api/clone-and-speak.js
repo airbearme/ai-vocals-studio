@@ -18,16 +18,24 @@ function cleanName(value) {
   return String(value || "Authorized Voice").replace(/[^A-Za-z0-9_. -]+/g, "").trim().slice(0, 80) || "Authorized Voice";
 }
 
-function qualityGate(metrics, strict) {
+function qualityGate(metrics, target = "studio") {
   const totalDuration = Number(metrics?.totalDurationS || 0);
   const fit = Number(metrics?.fitScore || 0);
   const clipping = Number(metrics?.maxClippingFraction || 0);
+  const fileCount = Array.isArray(metrics?.files) ? metrics.files.length : 0;
   const reasons = [];
+  if (target === "draft") return { ok: true, reasons, totalDuration, fit, clipping };
   if (totalDuration < 20) reasons.push("Upload at least 20 seconds of clean single-speaker voice; 60+ seconds is better.");
   if (fit < 60) reasons.push("The uploaded samples are not strong enough for studio-match mode.");
   if (clipping > 0.02) reasons.push("The samples appear clipped/distorted; lower the recording gain and re-upload.");
+  if (target === "pro") {
+    if (totalDuration < 90) reasons.push("Pro-match mode requires 90+ seconds of clean authorized reference voice.");
+    if (fileCount < 3) reasons.push("Pro-match mode requires at least 3 separate reference clips for a more stable voice profile.");
+    if (fit < 85) reasons.push("Pro-match mode requires an input fit score of 85% or higher.");
+    if (clipping > 0.005) reasons.push("Pro-match mode needs unclipped audio; re-upload lower-gain source files.");
+  }
   return {
-    ok: !strict || reasons.length === 0,
+    ok: reasons.length === 0,
     reasons,
     totalDuration,
     fit,
@@ -59,6 +67,9 @@ export default async function handler(req, res) {
     const apiKey = String(body.apiKey || process.env.ELEVENLABS_API_KEY || "").trim();
     const files = Array.isArray(body.files) ? body.files : [];
     const text = String(body.text || "").trim();
+    const qualityTarget = String(body.qualityTarget || (body.studioQuality === false ? "draft" : "pro"));
+    const allowedQualityTargets = new Set(["draft", "studio", "pro"]);
+    if (!allowedQualityTargets.has(qualityTarget)) return sendJson(res, 400, { ok: false, error: "Unsupported quality target." });
     if (!apiKey) return sendJson(res, 400, { ok: false, error: "Set ELEVENLABS_API_KEY on Vercel or enter an API key in the form." });
     if (!body.permission) return sendJson(res, 400, { ok: false, error: "Permission confirmation is required." });
     if (!files.length) return sendJson(res, 400, { ok: false, error: "Upload at least one voice sample." });
@@ -67,11 +78,11 @@ export default async function handler(req, res) {
     if (totalBytes > 14 * 1024 * 1024) {
       return sendJson(res, 413, { ok: false, error: "Uploaded samples are too large for Vercel serverless. Use shorter clips or the Docker/local app." });
     }
-    const gate = qualityGate(body.referenceMetrics, body.studioQuality !== false);
+    const gate = qualityGate(body.referenceMetrics, qualityTarget);
     if (!gate.ok) {
       return sendJson(res, 422, {
         ok: false,
-        error: `Studio-match input rejected: ${gate.reasons.join(" ")}`,
+        error: `${qualityTarget === "pro" ? "Pro-match" : "Studio-match"} input rejected: ${gate.reasons.join(" ")}`,
         referenceMetrics: gate,
       });
     }
@@ -87,6 +98,7 @@ export default async function handler(req, res) {
         stability: Number.isFinite(Number(body.stability)) ? Number(body.stability) : 0.62,
         similarity: Number.isFinite(Number(body.similarity)) ? Number(body.similarity) : 0.97,
         studioQuality: body.studioQuality !== false,
+        qualityTarget,
       },
       input_files: files.map((file) => ({
         name: cleanName(file.name || "voice-sample"),
@@ -96,6 +108,7 @@ export default async function handler(req, res) {
       report: {
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
         storageProvider: storage.provider,
+        qualityTarget,
         referenceMetrics: body.referenceMetrics || null,
       },
     });
@@ -157,6 +170,7 @@ export default async function handler(req, res) {
         sampleCount: files.length,
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
         storage: outputUrl ? storage.provider : "inline",
+        qualityTarget,
         referenceMetrics: body.referenceMetrics || null,
       },
     });

@@ -16,16 +16,24 @@ function cleanName(value) {
   return String(value || "Authorized Voice").replace(/[^A-Za-z0-9_. -]+/g, "").trim().slice(0, 80) || "Authorized Voice";
 }
 
-function qualityGate(metrics, strict) {
+function qualityGate(metrics, target = "studio") {
   const totalDuration = Number(metrics?.totalDurationS || 0);
   const fit = Number(metrics?.fitScore || 0);
   const clipping = Number(metrics?.maxClippingFraction || 0);
+  const fileCount = Array.isArray(metrics?.files) ? metrics.files.length : 0;
   const reasons = [];
+  if (target === "draft") return { ok: true, reasons };
   if (totalDuration < 20) reasons.push("Upload at least 20 seconds of clean single-speaker voice; 60+ seconds is better.");
   if (fit < 60) reasons.push("The uploaded samples are not strong enough for studio-match mode.");
   if (clipping > 0.02) reasons.push("The samples appear clipped/distorted; lower the recording gain and re-upload.");
+  if (target === "pro") {
+    if (totalDuration < 90) reasons.push("Pro-match mode requires 90+ seconds of clean authorized reference voice.");
+    if (fileCount < 3) reasons.push("Pro-match mode requires at least 3 separate reference clips for a more stable voice profile.");
+    if (fit < 85) reasons.push("Pro-match mode requires an input fit score of 85% or higher.");
+    if (clipping > 0.005) reasons.push("Pro-match mode needs unclipped audio; re-upload lower-gain source files.");
+  }
   return {
-    ok: !strict || reasons.length === 0,
+    ok: reasons.length === 0,
     reasons,
   };
 }
@@ -44,6 +52,9 @@ export default async function handler(req, res) {
     const taskMode = String(body.taskMode || "voiceover");
     const supportedTasks = new Set(["voiceover", "song_replace", "clip_convert"]);
     if (!supportedTasks.has(taskMode)) return sendJson(res, 400, { ok: false, error: "Unsupported worker task mode." });
+    const qualityTarget = String(body.qualityTarget || (body.studioQuality === false ? "draft" : "pro"));
+    const allowedQualityTargets = new Set(["draft", "studio", "pro"]);
+    if (!allowedQualityTargets.has(qualityTarget)) return sendJson(res, 400, { ok: false, error: "Unsupported quality target." });
     const separation = String(body.separation || "auto");
     const allowedSeparation = new Set(["auto", "demucs", "center"]);
     if (!allowedSeparation.has(separation)) return sendJson(res, 400, { ok: false, error: "Unsupported separation mode." });
@@ -58,11 +69,11 @@ export default async function handler(req, res) {
     if (totalBytes > 14 * 1024 * 1024) {
       return sendJson(res, 413, { ok: false, error: "Uploaded audio is too large for Vercel serverless queueing. Use shorter clips or run the local app/worker directly for large songs." });
     }
-    const gate = qualityGate(body.referenceMetrics, body.studioQuality !== false);
+    const gate = qualityGate(body.referenceMetrics, qualityTarget);
     if (!gate.ok) {
       return sendJson(res, 422, {
         ok: false,
-        error: `Studio-match input rejected: ${gate.reasons.join(" ")}`,
+        error: `${qualityTarget === "pro" ? "Pro-match" : "Studio-match"} input rejected: ${gate.reasons.join(" ")}`,
         referenceMetrics: body.referenceMetrics || null,
       });
     }
@@ -114,6 +125,7 @@ export default async function handler(req, res) {
         stability: Number(body.stability || 0.62),
         similarity: Number(body.similarity || 0.97),
         studioQuality: body.studioQuality !== false,
+        qualityTarget,
         taskMode,
         separation,
         targetFile: storedTarget,

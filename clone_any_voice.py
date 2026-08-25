@@ -127,6 +127,7 @@ def convert_target_audio(
     output_dir: Path,
     vocals_gain_db: float,
     separation: str = "auto",
+    quality_target: str = "studio",
 ) -> Optional[str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     from engine_planner import choose_best_plan
@@ -136,6 +137,11 @@ def convert_target_audio(
         from song_converter import change_song, write_conversion_report
         plan = choose_best_plan(profile=profile, mode=plan_mode, target_has_voice=True)
         print(f"[ok] selected engine plan: {plan['engine']} ({plan['confidence']}% confidence)")
+        if quality_target == "pro" and plan.get("engine") != "RVC":
+            raise RuntimeError(
+                "Pro-match song replacement requires a trained RVC model for this voice. "
+                "Add rvc_model.pth to the voice profile directory or lower quality target to Studio/Draft."
+            )
 
         out, steps = change_song(
             target_audio,
@@ -168,6 +174,11 @@ def convert_target_audio(
     has_voice = voice_fraction >= 0.08
     plan = choose_best_plan(profile=profile, mode=plan_mode, target_has_voice=has_voice)
     print(f"[ok] selected engine plan: {plan['engine']} ({plan['confidence']}% confidence)")
+    if quality_target == "pro" and plan.get("engine") != "RVC":
+        raise RuntimeError(
+            "Pro-match clip conversion requires a trained RVC model for this voice. "
+            "Add rvc_model.pth to the voice profile directory or lower quality target to Studio/Draft."
+        )
     if not has_voice:
         raise ValueError(
             "Target audio has little or no detectable voice. Use --target-type bed "
@@ -268,6 +279,7 @@ def synthesize_voiceover(
     text: str,
     output_dir: Path,
     mood: str = "default",
+    quality_target: str = "studio",
 ) -> Optional[str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     name = str(profile.get("name") or "cloned_voice")
@@ -394,19 +406,22 @@ def synthesize_voiceover(
         except Exception as e:
             failures.append(f"XTTS sidecar: {e}")
 
-    try:
-        from gtts import gTTS
-        from song_converter import convert_vocals
+    if quality_target != "pro":
+        try:
+            from gtts import gTTS
+            from song_converter import convert_vocals
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-            tts_path = Path(tmp.name)
-        gTTS(text=text, lang="en").save(str(tts_path))
-        out = output_dir / f"{name}_voiceover_dsp.wav"
-        convert_vocals(tts_path, profile, out, output_dir, progress_cb=_progress)
-        print("[ok] voice-over engine: gTTS + DSP timbre mapping")
-        add_candidate("gTTS + DSP", out)
-    except Exception as e:
-        failures.append(f"gTTS+DSP: {e}")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+                tts_path = Path(tmp.name)
+            gTTS(text=text, lang="en").save(str(tts_path))
+            out = output_dir / f"{name}_voiceover_dsp.wav"
+            convert_vocals(tts_path, profile, out, output_dir, progress_cb=_progress)
+            print("[ok] voice-over engine: gTTS + DSP timbre mapping")
+            add_candidate("gTTS + DSP", out)
+        except Exception as e:
+            failures.append(f"gTTS+DSP: {e}")
+    else:
+        failures.append("gTTS+DSP: disabled in Pro-match mode")
 
     if candidates:
         add_polished_candidates()
@@ -415,6 +430,8 @@ def synthesize_voiceover(
         raise RuntimeError("No voice-over backend succeeded: " + " | ".join(failures))
 
     best = max(candidates, key=lambda item: float(item["score"].get("score", 0.0)))
+    if quality_target == "pro" and str(best.get("engine", "")).startswith("gTTS"):
+        raise RuntimeError("Pro-match voice-over requires ElevenLabs, Qwen3-TTS, or XTTS; DSP-only fallback is not allowed.")
     final = output_dir / f"{name}_voiceover_best.wav"
     shutil.copy2(best["path"], final)
     print(f"[ok] selected best take: {best['engine']}")
@@ -532,6 +549,7 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("SONG_SEPARATION_METHOD", "auto"),
         help="song vocal separation method; center is fastest, demucs is highest quality after model download",
     )
+    parser.add_argument("--quality-target", choices=["draft", "studio", "pro"], default="studio")
     parser.add_argument(
         "--i-have-permission",
         action="store_true",
@@ -556,7 +574,13 @@ def main() -> int:
 
         voiceover_out: Optional[str] = None
         if args.voiceover_text:
-            voiceover_out = synthesize_voiceover(profile, args.voiceover_text, output_dir, args.mood)
+            voiceover_out = synthesize_voiceover(
+                profile,
+                args.voiceover_text,
+                output_dir,
+                args.mood,
+                args.quality_target,
+            )
             print(f"[ok] voice-over: {voiceover_out}")
 
         if args.target_audio and args.target_type == "bed":
@@ -579,6 +603,7 @@ def main() -> int:
                 output_dir,
                 args.vocals_gain_db,
                 args.separation,
+                args.quality_target,
             )
             print(f"[ok] converted audio: {out}")
 
