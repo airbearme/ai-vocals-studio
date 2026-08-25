@@ -55,6 +55,10 @@
       .metric span { color: var(--muted); font-size: 12px; text-transform: uppercase; font-weight: 800; }
       .small { color: var(--muted); font-size: 13px; line-height: 1.5; }
       .link { color: var(--accent-2); display: inline-block; margin-top: 8px; }
+      .jobs { margin-top: 16px; display: grid; gap: 9px; }
+      .job { border: 1px solid var(--line); border-radius: 13px; padding: 10px 12px; background: #101411; }
+      .job strong { display: block; }
+      .job span { color: var(--muted); font-size: 12px; }
       @media (max-width: 860px) { .hero, .grid, .row { grid-template-columns: 1fr; } }
     </style>
   </head>
@@ -140,7 +144,10 @@
             <div class="metric"><strong id="qualityMetric">-</strong><span>Input fit</span></div>
             <div class="metric"><strong id="filesMetric">-</strong><span>Samples</span></div>
           </div>
-          <p class="small">Hosted Vercel generation uses ElevenLabs IVC + TTS. The local repo still includes Qwen, XTTS, RVC, Demucs, and DSP for heavier workflows.</p>
+          <p class="small">Hosted Vercel generation uses ElevenLabs IVC + TTS. Supabase stores job history and output audio when configured.</p>
+          <h3>Recent Supabase jobs</h3>
+          <div id="supabaseStatus" class="small">Checking Supabase...</div>
+          <div id="jobs" class="jobs"></div>
         </aside>
       </section>
     </main>
@@ -169,6 +176,26 @@
         const countScore = Math.min(1, files.length / 3);
         const sizeScore = Math.min(1, totalMb / 3);
         return Math.round((0.45 * countScore + 0.55 * sizeScore) * 100);
+      }
+      async function loadJobs() {
+        const status = document.getElementById("supabaseStatus");
+        const jobsEl = document.getElementById("jobs");
+        try {
+          const response = await fetch("/api/jobs");
+          const payload = await response.json();
+          if (!payload.configured) {
+            status.textContent = "Supabase is not configured yet. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel to enable persistence.";
+            jobsEl.innerHTML = "";
+            return;
+          }
+          status.textContent = "Supabase persistence enabled.";
+          jobsEl.innerHTML = (payload.jobs || []).map((job) => {
+            const link = job.output_url ? `<a class="link" href="${job.output_url}" target="_blank" rel="noreferrer">Open stored audio</a>` : "";
+            return `<div class="job"><strong>${job.voice_name || "Voice-over"} · ${job.status}</strong><span>${new Date(job.created_at).toLocaleString()} · ${job.engine || "unknown"}</span>${link}</div>`;
+          }).join("") || "<p class=\"small\">No jobs yet.</p>";
+        } catch (err) {
+          status.textContent = `Could not load jobs: ${err.message || err}`;
+        }
       }
       async function mixWithBed(voiceBlob, bedFile) {
         const ctx = new OfflineAudioContext(2, 1, 44100);
@@ -253,12 +280,14 @@
             downloadMix.href = mixUrl; downloadMix.hidden = false;
           }
           setStatus(`Ready. Voice ID ${payload.voiceId}${payload.deleted ? " was deleted after generation." : " was kept in ElevenLabs."}`);
+          loadJobs();
         } catch (err) {
           setStatus(err.message || String(err), true);
         } finally {
           button.disabled = false;
         }
       });
+      loadJobs();
     </script>
   </body>
 </html>

@@ -1,3 +1,6 @@
+import { createJob, updateJob, uploadAudio, supabaseConfig } from "./_supabase.js";
+import { randomUUID } from "node:crypto";
+
 const ELEVEN_API = "https://api.elevenlabs.io/v1";
 
 export const config = {
@@ -32,6 +35,7 @@ export default async function handler(req, res) {
     res.setHeader("Allow", "POST");
     return sendJson(res, 405, { ok: false, error: "Method not allowed" });
   }
+  let job = null;
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     const apiKey = String(body.apiKey || process.env.ELEVENLABS_API_KEY || "").trim();
@@ -45,6 +49,21 @@ export default async function handler(req, res) {
     if (totalBytes > 14 * 1024 * 1024) {
       return sendJson(res, 413, { ok: false, error: "Uploaded samples are too large for Vercel serverless. Use shorter clips or the Docker/local app." });
     }
+    job = await createJob({
+      status: "running",
+      voice_name: cleanName(body.voiceName),
+      engine: "ElevenLabs IVC",
+      permission_confirmed: true,
+      input_files: files.map((file) => ({
+        name: cleanName(file.name || "voice-sample"),
+        type: file.type || "application/octet-stream",
+        size: Number(file.size || 0),
+      })),
+      report: {
+        totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
+        supabaseConfigured: supabaseConfig().enabled,
+      },
+    });
 
     const voiceForm = new FormData();
     voiceForm.append("name", cleanName(body.voiceName));
@@ -81,6 +100,8 @@ export default async function handler(req, res) {
     });
 
     const audioBuffer = Buffer.from(await ttsResponse.arrayBuffer());
+    const outputPath = `${job?.id || randomUUID()}/voiceover.mp3`;
+    const outputUrl = await uploadAudio(outputPath, audioBuffer, "audio/mpeg");
     let deleted = false;
     if (body.deleteVoice) {
       try {
@@ -90,15 +111,30 @@ export default async function handler(req, res) {
         deleted = false;
       }
     }
+    await updateJob(job?.id, {
+      status: "complete",
+      output_path: outputUrl ? outputPath : null,
+      output_url: outputUrl,
+      report: {
+        voiceId,
+        deleted,
+        requiresVerification: Boolean(voice.requires_verification),
+        sampleCount: files.length,
+        totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
+        storage: outputUrl ? "supabase" : "inline",
+      },
+    });
 
     return sendJson(res, 200, {
       ok: true,
+      jobId: job?.id || null,
       engine: "ElevenLabs IVC",
       voiceId,
       requiresVerification: Boolean(voice.requires_verification),
       deleted,
       mediaType: "audio/mpeg",
       audioBase64: audioBuffer.toString("base64"),
+      outputUrl,
       report: {
         sampleCount: files.length,
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
@@ -109,6 +145,11 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
+    try {
+      if (job?.id) {
+        await updateJob(job.id, { status: "failed", error: error.message || String(error) });
+      }
+    } catch {}
     return sendJson(res, 500, { ok: false, error: error.message || String(error) });
   }
 }
