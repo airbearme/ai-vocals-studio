@@ -13,8 +13,18 @@ export default async function handler(req, res) {
   }
   try {
     const cfg = storageConfig();
-    const jobs = await listJobs(12);
-    return sendJson(res, 200, { ok: true, configured: true, provider: cfg.provider, jobs });
+    try {
+      const jobs = await listJobs(12);
+      return sendJson(res, 200, { ok: true, configured: true, provider: cfg.provider, jobs });
+    } catch (error) {
+      return sendJson(res, 200, {
+        ok: true,
+        configured: true,
+        provider: cfg.provider,
+        jobs: [],
+        warning: error.message || String(error),
+      });
+    }
   } catch (error) {
     return sendJson(res, 500, { ok: false, error: error.message || String(error) });
   }
