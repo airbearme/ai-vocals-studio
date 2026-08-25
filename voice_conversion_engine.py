@@ -130,13 +130,14 @@ class VoiceConversionEngine:
                     continue
                 voiced_list.extend(f0[voiced].tolist())
                 vsp = sp[voiced]
+                voiced_count = len(vsp)
                 log_env = np.mean(np.log10(vsp + 1e-7), axis=0)
                 linear_env = np.power(10.0, log_env)
                 if n_voiced == 0:
-                    sp_sum = linear_env.astype(np.float64)
+                    sp_sum = (linear_env * voiced_count).astype(np.float64)
                 else:
-                    sp_sum += linear_env.astype(np.float64)
-                n_voiced += 1
+                    sp_sum += linear_env.astype(np.float64) * voiced_count
+                n_voiced += voiced_count
                 rms_accum.append(float(np.sqrt(np.mean(chunk ** 2))))
                 try:
                     tempo, _ = librosa.beat.beat_track(y=chunk, sr=sr)
@@ -282,6 +283,7 @@ class VoiceConversionEngine:
             Target F0 for the conversion.  Defaults to the profile's
             ``pitch_target`` (male-band median) or its mean pitch.
         """
+        strength = float(np.clip(strength, 0.0, 1.0))
         if progress_cb:
             progress_cb("Loading source audio", 5)
         y, sr = librosa.load(input_audio, sr=self.target_sr, mono=True)
@@ -302,8 +304,6 @@ class VoiceConversionEngine:
         ap = pw.d4c(y.astype(np.float64), f0, t, sr)
 
         # ---------- pitch mapping ------------------------------------
-
-# ---------- pitch mapping ------------------------------------
         voiced_mask = f0 > 0
         if not np.any(voiced_mask):
             raise ValueError("Source audio has no detectable voiced frames")
@@ -316,31 +316,10 @@ class VoiceConversionEngine:
                                      profile["pitch"]["mean_hz"],
                                   ))
             )
-        # More controlled pitch scaling to preserve vocal characteristics
-        # Use linear scaling with pitch target constraints
-        target_hz = float(pitch_target) if pitch_target > 0 else src_mean
-        log_target = np.log2(max(target_hz, 0.1))  # Safety log
-        log_src_mean = np.log2(max(src_mean, 0.1))  # Safety log
-
-        # Use a more conservative scaling approach
-        # Scale pitch up to 10% either side for natural variation
-        scaling_factor = 2.0 ** (log_target - log_src_mean)
-        scaling_factor = np.clip(scaling_factor, 0.8, 1.2)  # Limit scaling range
-
-        f0_conv = np.where(voiced_mask, f0 * scaling_factor, 0.0)
-        voiced_mask = f0 > 0
-        if not np.any(voiced_mask):
-            raise ValueError("Source audio has no detectable voiced frames")
-
-        src_mean = np.mean(f0[voiced_mask])
-        if pitch_target is None:
-            pitch_target = float(profile.get(
-                "pitch_target",
-                profile["pitch"].get("male_band_median_hz",
-                                     profile["pitch"]["mean_hz"]),
-            ))
-        # logarithmic ratio so the whole contour is moved into range
-        ratio = 2.0 ** (np.log2(pitch_target) - np.log2(src_mean))
+        # Use a bounded log-frequency shift so source prosody is retained.
+        target_hz = float(pitch_target) if pitch_target and pitch_target > 0 else src_mean
+        ratio = 2.0 ** (np.log2(target_hz) - np.log2(src_mean))
+        ratio = float(np.clip(ratio, 0.75, 1.35))
         f0_conv = np.where(voiced_mask, f0 * float(ratio), 0.0)
 
         # ---------- spectral envelope transfer ------------------------
@@ -374,10 +353,16 @@ class VoiceConversionEngine:
         else:
             shifted = sv
 
-        # timbre morph (vectorized):  shape each frame's resonance toward
-        # the reference envelope with the given strength
-        sp_conv[voiced_idx] = (np.power(shifted, 1.0 - strength)
-                               * np.power(ref_env, strength))
+        # Blend normalized spectral shapes so articulation and per-frame
+        # energy remain audible while the reference timbre is transferred.
+        source_log_shape = np.log(np.maximum(shifted, 1e-8))
+        source_log_shape -= np.mean(source_log_shape, axis=1, keepdims=True)
+        reference_log_shape = np.log(ref_env)
+        reference_log_shape -= np.mean(reference_log_shape)
+        blended_shape = ((1.0 - strength) * source_log_shape
+                 + strength * reference_log_shape)
+        source_energy = np.sqrt(np.mean(sv ** 2, axis=1, keepdims=True))
+        sp_conv[voiced_idx] = np.exp(blended_shape) * source_energy
 
         # keep overall loudness of the source clip
         energy_in = np.sum(sp ** 2)
@@ -395,9 +380,10 @@ class VoiceConversionEngine:
         if ref_rms > 0:
             cur_rms = np.sqrt(np.mean(y_out ** 2)) + 1e-8
             y_out = y_out * (ref_rms / cur_rms)
-        max_amp = np.max(np.abs(y_out))
-        if max_amp > 1.0:
-            y_out = y_out / max_amp * 0.98
+        # Preserve transients while avoiding hard clipping after gain matching.
+        peak = np.max(np.abs(y_out))
+        if peak > 0.98:
+            y_out = np.tanh(y_out / peak) * 0.98
 
         if output_audio:
             os.makedirs(os.path.dirname(os.path.abspath(output_audio)),
