@@ -44,6 +44,9 @@ export default async function handler(req, res) {
     const taskMode = String(body.taskMode || "voiceover");
     const supportedTasks = new Set(["voiceover", "song_replace", "clip_convert"]);
     if (!supportedTasks.has(taskMode)) return sendJson(res, 400, { ok: false, error: "Unsupported worker task mode." });
+    const separation = String(body.separation || "auto");
+    const allowedSeparation = new Set(["auto", "demucs", "center"]);
+    if (!allowedSeparation.has(separation)) return sendJson(res, 400, { ok: false, error: "Unsupported separation mode." });
     if (!body.permission) return sendJson(res, 400, { ok: false, error: "Permission confirmation is required." });
     if (!files.length) return sendJson(res, 400, { ok: false, error: "Upload at least one voice sample." });
     if (taskMode === "voiceover" && !text) return sendJson(res, 400, { ok: false, error: "Voice-over text is required." });
@@ -112,6 +115,7 @@ export default async function handler(req, res) {
         similarity: Number(body.similarity || 0.97),
         studioQuality: body.studioQuality !== false,
         taskMode,
+        separation,
         targetFile: storedTarget,
       },
       report: {

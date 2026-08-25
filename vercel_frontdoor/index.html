@@ -126,6 +126,15 @@
             <input id="targetFile" name="targetFile" type="file" accept="audio/*">
             <p class="small">For songs, upload audio with a vocal to replace. For beats/instrumentals with no vocal, use text voice-over and the optional browser mix bed below.</p>
           </div>
+          <div class="field" id="separationField" hidden>
+            <label for="separation">Song vocal separation</label>
+            <select id="separation" name="separation">
+              <option value="auto" selected>Auto: best available</option>
+              <option value="demucs">Demucs: best quality, slower first run</option>
+              <option value="center">Center-channel: fastest test mode</option>
+            </select>
+            <p class="small">Use center-channel for quick checks. Use Demucs for better real song separation after the model is cached on the worker.</p>
+          </div>
           <div class="field" id="bedField">
             <label for="bedFile">Optional beat/song bed for browser mix</label>
             <input id="bedFile" name="bedFile" type="file" accept="audio/*">
@@ -273,11 +282,13 @@
         const scriptField = document.getElementById("scriptField");
         const targetField = document.getElementById("targetField");
         const bedField = document.getElementById("bedField");
+        const separationField = document.getElementById("separationField");
         const processingMode = document.getElementById("processingMode");
         const scriptText = document.getElementById("scriptText");
         const targetFile = document.getElementById("targetFile");
         scriptField.hidden = !isVoiceover;
         targetField.hidden = isVoiceover;
+        separationField.hidden = taskMode !== "song_replace";
         bedField.hidden = !isVoiceover;
         scriptText.required = isVoiceover;
         targetFile.required = !isVoiceover;
@@ -377,6 +388,7 @@
               stability: Number(document.getElementById("stability").value),
               similarity: Number(document.getElementById("similarity").value),
               studioQuality: document.getElementById("studioQuality").checked,
+              separation: document.getElementById("separation").value,
               referenceMetrics: latestReferenceMetrics,
               files: encoded,
               targetFile: targetPayload,

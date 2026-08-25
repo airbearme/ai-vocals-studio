@@ -126,6 +126,7 @@ def convert_target_audio(
     target_type: str,
     output_dir: Path,
     vocals_gain_db: float,
+    separation: str = "auto",
 ) -> Optional[str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     from engine_planner import choose_best_plan
@@ -141,7 +142,7 @@ def convert_target_audio(
             profile,
             output_dir,
             progress_cb=_progress,
-            separation="auto",
+            separation=separation,
             vocals_gain_db=vocals_gain_db,
         )
         print(f"[ok] song conversion engine: {steps.get('conversion')}")
@@ -526,6 +527,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="outputs/clone_any_voice")
     parser.add_argument("--vocals-gain-db", type=float, default=0.0)
     parser.add_argument(
+        "--separation",
+        choices=["auto", "demucs", "center"],
+        default=os.environ.get("SONG_SEPARATION_METHOD", "auto"),
+        help="song vocal separation method; center is fastest, demucs is highest quality after model download",
+    )
+    parser.add_argument(
         "--i-have-permission",
         action="store_true",
         help="confirm you own the voice or have explicit written permission/license to use it",
@@ -571,6 +578,7 @@ def main() -> int:
                 args.target_type,
                 output_dir,
                 args.vocals_gain_db,
+                args.separation,
             )
             print(f"[ok] converted audio: {out}")
 

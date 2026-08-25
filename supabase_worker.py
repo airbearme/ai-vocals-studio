@@ -182,6 +182,9 @@ def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], 
     settings = job.get("settings") or {}
     mood = str(settings.get("mood") or "default")
     vocals_gain_db = float(settings.get("vocalsGainDb") or settings.get("voiceGainDb") or 0.0)
+    separation = str(settings.get("separation") or os.environ.get("SONG_SEPARATION_METHOD") or "auto")
+    if separation not in {"auto", "demucs", "center"}:
+        separation = "auto"
     input_files = job.get("input_files") or []
     if job_type == "local_worker_voiceover" and not text:
         raise RuntimeError("Queued job has no text.")
@@ -226,7 +229,16 @@ def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], 
         target_path = job_dir / f"target{suffix}"
         client.download_object(str(target_object), target_path)
         target_type = "song" if mode == "song" else "clip"
-        output_audio = Path(convert_target_audio(profile, str(target_path), target_type, output_dir, vocals_gain_db) or "")
+        output_audio = Path(
+            convert_target_audio(
+                profile,
+                str(target_path),
+                target_type,
+                output_dir,
+                vocals_gain_db,
+                separation,
+            ) or ""
+        )
     else:
         output_audio = Path(synthesize_voiceover(profile, text, output_dir, mood=mood) or "")
     if not output_audio.exists():
