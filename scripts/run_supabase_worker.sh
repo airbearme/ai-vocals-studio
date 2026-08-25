@@ -9,6 +9,12 @@ if [[ -f .env ]]; then
   source .env
   set +a
 fi
+if [[ -f .env.supabase.local ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env.supabase.local
+  set +a
+fi
 
 if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
   cat >&2 <<'EOF'

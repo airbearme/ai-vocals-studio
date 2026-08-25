@@ -82,3 +82,5 @@ logs/
 # Local personal config — never commit this
 .cloud_config
 .env
+.env*
+supabase/.temp/

@@ -9,7 +9,7 @@ BUCKET="${SUPABASE_STORAGE_BUCKET:-voiceovers}"
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/setup_vercel_supabase.sh --project-ref <supabase-ref> --db-password <password>
+  scripts/setup_vercel_supabase.sh --project-ref <supabase-ref>
 
 Optional env:
   VERCEL_SCOPE=stephens-projects-8fbc16d0
@@ -22,15 +22,10 @@ EOF
 }
 
 PROJECT_REF=""
-DB_PASSWORD=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --project-ref)
       PROJECT_REF="${2:-}"
-      shift 2
-      ;;
-    --db-password)
-      DB_PASSWORD="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -45,7 +40,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$PROJECT_REF" || -z "$DB_PASSWORD" ]]; then
+if [[ -z "$PROJECT_REF" ]]; then
   usage >&2
   exit 2
 fi
@@ -55,11 +50,8 @@ command -v jq >/dev/null || { echo "jq not found" >&2; exit 1; }
 command -v npx >/dev/null || { echo "npx not found" >&2; exit 1; }
 
 cd "$ROOT"
-echo "[setup] linking Supabase project $PROJECT_REF"
-supabase link --project-ref "$PROJECT_REF" --password "$DB_PASSWORD"
-
-echo "[setup] pushing Supabase migrations"
-supabase db push --linked --password "$DB_PASSWORD"
+echo "[setup] applying Supabase schema to $PROJECT_REF"
+supabase db query --linked --project-ref "$PROJECT_REF" --file supabase/schema.sql
 
 SUPABASE_URL="https://${PROJECT_REF}.supabase.co"
 echo "[setup] fetching Supabase service role key"
@@ -114,8 +106,5 @@ Supabase URL: $SUPABASE_URL
 Vercel: https://ai-vocals-studio.vercel.app
 
 Run local worker:
-  export SUPABASE_URL=$SUPABASE_URL
-  export SUPABASE_SERVICE_ROLE_KEY='[service role key]'
-  export SUPABASE_STORAGE_BUCKET=$BUCKET
-  venv/bin/python supabase_worker.py
+  scripts/run_supabase_worker.sh
 EOF
