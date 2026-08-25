@@ -272,10 +272,56 @@ def synthesize_voiceover(
     name = str(profile.get("name") or "cloned_voice")
     reference = profile.get("reference")
     failures: list[str] = []
+    candidates: list[dict] = []
     from engine_planner import choose_best_plan
 
     plan = choose_best_plan(profile=profile, mode="bed", target_has_voice=False)
     print(f"[ok] selected voice-over plan: {plan['engine']} ({plan['confidence']}% confidence)")
+
+    def add_candidate(engine: str, path: str | Path) -> None:
+        candidate_path = Path(path)
+        if not candidate_path.exists() or candidate_path.stat().st_size < 100:
+            failures.append(f"{engine}: empty output")
+            return
+        score = score_voice_accuracy(profile, candidate_path)
+        print(
+            f"[ok] candidate: {engine} -> {score['score']}% "
+            f"(pitch={score['pitch']}%, timbre={score['timbre']}%)"
+        )
+        candidates.append({
+            "engine": engine,
+            "path": str(candidate_path),
+            "score": score,
+            "polished": False,
+        })
+
+    def add_polished_candidates() -> None:
+        from song_converter import convert_vocals
+
+        originals = list(candidates)
+        for idx, item in enumerate(originals, start=1):
+            if "DSP" in item["engine"] or "RVC polish" in item["engine"]:
+                continue
+            source = Path(item["path"])
+            polished = output_dir / f"{source.stem}_voice_profile_polish_{idx}.wav"
+            try:
+                ok, msg = convert_vocals(source, profile, polished, output_dir, progress_cb=_progress)
+                if ok:
+                    score = score_voice_accuracy(profile, polished)
+                    engine = f"{item['engine']} + {msg}"
+                    print(
+                        f"[ok] polished candidate: {engine} -> {score['score']}% "
+                        f"(pitch={score['pitch']}%, timbre={score['timbre']}%)"
+                    )
+                    candidates.append({
+                        "engine": engine,
+                        "path": str(polished),
+                        "score": score,
+                        "polished": True,
+                        "source_engine": item["engine"],
+                    })
+            except Exception as exc:
+                failures.append(f"{item['engine']} polish: {exc}")
 
     try:
         from elevenlabs_engine import ElevenLabsEngine
@@ -287,9 +333,7 @@ def synthesize_voiceover(
             final = output_dir / f"{name}_voiceover_elevenlabs.wav"
             shutil.copy2(out, final)
             print("[ok] voice-over engine: ElevenLabs")
-            score = print_accuracy_score(profile, final)
-            write_voiceover_report(output_dir / "quality_report.json", profile, final, "ElevenLabs", score, plan)
-            return str(final)
+            add_candidate("ElevenLabs", final)
     except Exception as e:
         failures.append(f"ElevenLabs: {e}")
 
@@ -311,9 +355,7 @@ def synthesize_voiceover(
                 )
                 if result:
                     print("[ok] voice-over engine: Qwen3-TTS")
-                    score = print_accuracy_score(profile, result)
-                    write_voiceover_report(output_dir / "quality_report.json", profile, result, "Qwen3-TTS", score, plan)
-                    return str(result)
+                    add_candidate("Qwen3-TTS", result)
         except Exception as e:
             failures.append(f"Qwen3-TTS: {e}")
 
@@ -332,9 +374,7 @@ def synthesize_voiceover(
                 final = output_dir / f"{name}_voiceover_xtts.wav"
                 shutil.copy2(out, final)
                 print("[ok] voice-over engine: XTTS v2")
-                score = print_accuracy_score(profile, final)
-                write_voiceover_report(output_dir / "quality_report.json", profile, final, "XTTS v2", score, plan)
-                return str(final)
+                add_candidate("XTTS v2", final)
         except Exception as e:
             failures.append(f"XTTS: {e}")
 
@@ -349,9 +389,7 @@ def synthesize_voiceover(
                 "--output", str(final),
             ])
             print("[ok] voice-over engine: XTTS v2 sidecar")
-            score = print_accuracy_score(profile, final)
-            write_voiceover_report(output_dir / "quality_report.json", profile, final, "XTTS v2 sidecar", score, plan)
-            return str(final)
+            add_candidate("XTTS v2 sidecar", final)
         except Exception as e:
             failures.append(f"XTTS sidecar: {e}")
 
@@ -365,13 +403,32 @@ def synthesize_voiceover(
         out = output_dir / f"{name}_voiceover_dsp.wav"
         convert_vocals(tts_path, profile, out, output_dir, progress_cb=_progress)
         print("[ok] voice-over engine: gTTS + DSP timbre mapping")
-        score = print_accuracy_score(profile, out)
-        write_voiceover_report(output_dir / "quality_report.json", profile, out, "gTTS + DSP", score, plan)
-        return str(out)
+        add_candidate("gTTS + DSP", out)
     except Exception as e:
         failures.append(f"gTTS+DSP: {e}")
 
-    raise RuntimeError("No voice-over backend succeeded: " + " | ".join(failures))
+    if candidates:
+        add_polished_candidates()
+
+    if not candidates:
+        raise RuntimeError("No voice-over backend succeeded: " + " | ".join(failures))
+
+    best = max(candidates, key=lambda item: float(item["score"].get("score", 0.0)))
+    final = output_dir / f"{name}_voiceover_best.wav"
+    shutil.copy2(best["path"], final)
+    print(f"[ok] selected best take: {best['engine']}")
+    score = print_accuracy_score(profile, final)
+    write_voiceover_report(
+        output_dir / "quality_report.json",
+        profile,
+        final,
+        str(best["engine"]),
+        score,
+        plan,
+        candidates=candidates,
+        failures=failures,
+    )
+    return str(final)
 
 
 def write_voiceover_report(
@@ -381,6 +438,8 @@ def write_voiceover_report(
     engine: str,
     score: dict,
     plan: dict | None = None,
+    candidates: list[dict] | None = None,
+    failures: list[str] | None = None,
 ) -> str:
     from song_converter import write_conversion_report
 
@@ -393,6 +452,26 @@ def write_voiceover_report(
         score=score,
         plan=plan,
     )
+    if candidates is not None or failures is not None:
+        path = Path(report)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["candidate_takes"] = [
+            {
+                "engine": item.get("engine"),
+                "output_audio": item.get("path"),
+                "estimated_accuracy": item.get("score"),
+                "polished": bool(item.get("polished", False)),
+                "source_engine": item.get("source_engine"),
+            }
+            for item in (candidates or [])
+        ]
+        data["failed_backends"] = failures or []
+        data["selection"] = {
+            "strategy": "highest estimated voice match across generated and polished candidates",
+            "selected_engine": engine,
+            "selected_output": str(output_audio),
+        }
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     print(f"[ok] quality report: {report}")
     return report
 

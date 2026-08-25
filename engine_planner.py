@@ -107,11 +107,15 @@ def get_engine_status(profile: dict[str, Any] | None = None) -> list[dict[str, A
     xtts_ok, xtts_note = _importable("TTS")
     if not xtts_ok:
         xtts_ok, xtts_note = _sidecar_importable("TTS")
-    rvc_ok, rvc_note = _importable("rvc_python")
-    if not rvc_ok:
-        rvc_ok, rvc_note = _sidecar_importable("rvc_python")
 
     has_rvc_model = _rvc_model_present(profile or {}) if profile else False
+    if profile and not has_rvc_model:
+        rvc_ok = _importable("rvc_python")[0] or _sidecar_python("rvc_python") is not None
+        rvc_note = "sidecar configured; add a trained rvc_model.pth to enable"
+    else:
+        rvc_ok, rvc_note = _importable("rvc_python")
+        if not rvc_ok:
+            rvc_ok, rvc_note = _sidecar_importable("rvc_python")
     eleven_configured = eleven_ok and _has_api_key()
 
     return [
