@@ -16,6 +16,20 @@ function cleanName(value) {
   return String(value || "Authorized Voice").replace(/[^A-Za-z0-9_. -]+/g, "").trim().slice(0, 80) || "Authorized Voice";
 }
 
+function qualityGate(metrics, strict) {
+  const totalDuration = Number(metrics?.totalDurationS || 0);
+  const fit = Number(metrics?.fitScore || 0);
+  const clipping = Number(metrics?.maxClippingFraction || 0);
+  const reasons = [];
+  if (totalDuration < 20) reasons.push("Upload at least 20 seconds of clean single-speaker voice; 60+ seconds is better.");
+  if (fit < 60) reasons.push("The uploaded samples are not strong enough for studio-match mode.");
+  if (clipping > 0.02) reasons.push("The samples appear clipped/distorted; lower the recording gain and re-upload.");
+  return {
+    ok: !strict || reasons.length === 0,
+    reasons,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -36,6 +50,14 @@ export default async function handler(req, res) {
     const totalBytes = files.reduce((sum, file) => sum + Number(file.size || 0), 0);
     if (totalBytes > 14 * 1024 * 1024) {
       return sendJson(res, 413, { ok: false, error: "Uploaded samples are too large for Vercel serverless. Use shorter clips or run the local app." });
+    }
+    const gate = qualityGate(body.referenceMetrics, body.studioQuality !== false);
+    if (!gate.ok) {
+      return sendJson(res, 422, {
+        ok: false,
+        error: `Studio-match input rejected: ${gate.reasons.join(" ")}`,
+        referenceMetrics: body.referenceMetrics || null,
+      });
     }
 
     const jobPrefix = `queued/${randomUUID()}`;
@@ -66,12 +88,14 @@ export default async function handler(req, res) {
       mode: "bed",
       settings: {
         mood: body.mood || "default",
-        stability: Number(body.stability || 0.55),
-        similarity: Number(body.similarity || 0.9),
+        stability: Number(body.stability || 0.62),
+        similarity: Number(body.similarity || 0.97),
+        studioQuality: body.studioQuality !== false,
       },
       report: {
         queuedBy: "vercel",
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
+        referenceMetrics: body.referenceMetrics || null,
       },
     });
 

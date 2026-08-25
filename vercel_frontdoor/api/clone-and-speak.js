@@ -18,6 +18,23 @@ function cleanName(value) {
   return String(value || "Authorized Voice").replace(/[^A-Za-z0-9_. -]+/g, "").trim().slice(0, 80) || "Authorized Voice";
 }
 
+function qualityGate(metrics, strict) {
+  const totalDuration = Number(metrics?.totalDurationS || 0);
+  const fit = Number(metrics?.fitScore || 0);
+  const clipping = Number(metrics?.maxClippingFraction || 0);
+  const reasons = [];
+  if (totalDuration < 20) reasons.push("Upload at least 20 seconds of clean single-speaker voice; 60+ seconds is better.");
+  if (fit < 60) reasons.push("The uploaded samples are not strong enough for studio-match mode.");
+  if (clipping > 0.02) reasons.push("The samples appear clipped/distorted; lower the recording gain and re-upload.");
+  return {
+    ok: !strict || reasons.length === 0,
+    reasons,
+    totalDuration,
+    fit,
+    clipping,
+  };
+}
+
 async function elevenFetch(path, options) {
   const response = await fetch(`${ELEVEN_API}${path}`, options);
   if (response.ok) return response;
@@ -49,6 +66,14 @@ export default async function handler(req, res) {
     if (totalBytes > 14 * 1024 * 1024) {
       return sendJson(res, 413, { ok: false, error: "Uploaded samples are too large for Vercel serverless. Use shorter clips or the Docker/local app." });
     }
+    const gate = qualityGate(body.referenceMetrics, body.studioQuality !== false);
+    if (!gate.ok) {
+      return sendJson(res, 422, {
+        ok: false,
+        error: `Studio-match input rejected: ${gate.reasons.join(" ")}`,
+        referenceMetrics: gate,
+      });
+    }
     job = await createJob({
       status: "running",
       job_type: "instant_voiceover",
@@ -58,8 +83,9 @@ export default async function handler(req, res) {
       text,
       mode: "bed",
       settings: {
-        stability: Number.isFinite(Number(body.stability)) ? Number(body.stability) : 0.55,
-        similarity: Number.isFinite(Number(body.similarity)) ? Number(body.similarity) : 0.9,
+        stability: Number.isFinite(Number(body.stability)) ? Number(body.stability) : 0.62,
+        similarity: Number.isFinite(Number(body.similarity)) ? Number(body.similarity) : 0.97,
+        studioQuality: body.studioQuality !== false,
       },
       input_files: files.map((file) => ({
         name: cleanName(file.name || "voice-sample"),
@@ -69,6 +95,7 @@ export default async function handler(req, res) {
       report: {
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
         supabaseConfigured: supabaseConfig().enabled,
+        referenceMetrics: body.referenceMetrics || null,
       },
     });
 
@@ -98,9 +125,9 @@ export default async function handler(req, res) {
         text,
         model_id: "eleven_multilingual_v2",
         voice_settings: {
-          stability: Number.isFinite(Number(body.stability)) ? Number(body.stability) : 0.55,
-          similarity_boost: Number.isFinite(Number(body.similarity)) ? Number(body.similarity) : 0.9,
-          style: 0.25,
+          stability: Number.isFinite(Number(body.stability)) ? Number(body.stability) : 0.62,
+          similarity_boost: Number.isFinite(Number(body.similarity)) ? Number(body.similarity) : 0.97,
+          style: 0.15,
           use_speaker_boost: true,
         },
       }),
@@ -129,6 +156,7 @@ export default async function handler(req, res) {
         sampleCount: files.length,
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
         storage: outputUrl ? "supabase" : "inline",
+        referenceMetrics: body.referenceMetrics || null,
       },
     });
 
@@ -145,6 +173,7 @@ export default async function handler(req, res) {
       report: {
         sampleCount: files.length,
         totalSampleMb: Math.round((totalBytes / (1024 * 1024)) * 100) / 100,
+        referenceMetrics: body.referenceMetrics || null,
         notes: [
           "Hosted Vercel path uses ElevenLabs Instant Voice Cloning and text-to-speech.",
           "For local Qwen/XTTS/RVC/Demucs workflows, run the Docker/local app.",
