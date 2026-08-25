@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from gtts import gTTS
 import base64
+import json
 
 # Try to import voice cloning engines
 try:
@@ -201,6 +202,118 @@ def audio_player(audio_path):
     except Exception as e:
         st.error(f"Could not play audio: {e}")
 
+
+def _save_upload(upload, folder: Path) -> str:
+    """Persist a Streamlit upload and return its local path."""
+    folder.mkdir(parents=True, exist_ok=True)
+    suffix = Path(upload.name).suffix or ".wav"
+    safe_stem = "".join(c if c.isalnum() or c in "._-" else "_" for c in Path(upload.name).stem)
+    path = folder / f"{safe_stem}_{int(time.time() * 1000)}{suffix}"
+    path.write_bytes(upload.getbuffer())
+    return str(path)
+
+
+def _ui_progress(status_box, progress_bar):
+    def progress_cb(message, pct):
+        progress_bar.progress(max(0, min(100, int(pct))))
+        status_box.info(message)
+    return progress_cb
+
+
+def run_voiceover_builder(
+    *,
+    voice_files,
+    target_audio,
+    voice_label: str,
+    voice_source_type: str,
+    mode: str,
+    script_text: str,
+    has_permission: bool,
+    voice_gain_db: float,
+    bed_gain_db: float,
+    mood: str,
+    status_box,
+    progress_bar,
+) -> dict:
+    """Run the easy UI workflow using the same backend as the CLI."""
+    if not has_permission:
+        raise ValueError("Confirm permission before generating audio.")
+    if not voice_files:
+        raise ValueError("Upload at least one voice sample.")
+    if not target_audio:
+        raise ValueError("Upload the song, beat, or target audio.")
+    if mode == "Voice-over on beat/song" and not script_text.strip():
+        raise ValueError("Enter the voice-over text.")
+
+    from clone_any_voice import (
+        convert_target_audio,
+        mix_voiceover_over_bed,
+        synthesize_voiceover,
+    )
+    from voice_cloner import build_voice_profile_from_sources
+
+    run_id = int(time.time())
+    upload_dir = Path(DATA) / "ui_runs" / str(run_id)
+    output_dir = Path(OUT) / "voiceover_builder" / str(run_id)
+    voice_paths = [_save_upload(upload, upload_dir / "voices") for upload in voice_files]
+    target_path = _save_upload(target_audio, upload_dir / "target")
+    label = voice_label.strip() or f"Authorized_Voice_{run_id}"
+
+    progress = _ui_progress(status_box, progress_bar)
+    profile = build_voice_profile_from_sources(
+        name=label,
+        source_paths=voice_paths,
+        source_type=voice_source_type,
+        description="Built from Voice-Over Builder uploads",
+        voices_dir=VOICES,
+        progress_cb=progress,
+        has_permission=True,
+    )
+    if not profile:
+        raise RuntimeError("Could not build the cloned voice profile.")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if mode == "Voice-over on beat/song":
+        voiceover_path = synthesize_voiceover(profile, script_text, output_dir, mood=mood)
+        mixed_path = output_dir / f"{profile.get('name', 'voice')}_mixed_voiceover.wav"
+        final_path = mix_voiceover_over_bed(
+            voiceover_path,
+            target_path,
+            mixed_path,
+            voice_gain_db=voice_gain_db,
+            bed_gain_db=bed_gain_db,
+        )
+        report_path = output_dir / "quality_report.json"
+        status = "voiceover_mix"
+    else:
+        target_type = "song" if mode == "Replace vocals in song" else "clip"
+        final_path = convert_target_audio(
+            profile,
+            target_path,
+            target_type,
+            output_dir,
+            vocals_gain_db=voice_gain_db,
+        )
+        report_path = output_dir / "quality_report.json"
+        status = "voice_conversion"
+
+    report = {}
+    if report_path.exists():
+        try:
+            report = json.loads(report_path.read_text())
+        except Exception:
+            report = {}
+    progress_bar.progress(100)
+    status_box.success("Generation complete.")
+    return {
+        "status": status,
+        "profile": profile,
+        "output": str(final_path),
+        "report": report,
+        "report_path": str(report_path) if report_path.exists() else "",
+        "output_dir": str(output_dir),
+    }
+
 def main():
     init_session_state()
 
@@ -229,7 +342,116 @@ def main():
     st.sidebar.metric("Dataset Size", f"{dataset_info['total_size_mb']:.1f} MB")
 
     # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs([":musical_note: Song to Voice", ":speaking_head: Text-to-Speech", ":robot_face: Models", ":bar_chart: Analytics"])
+    builder_tab, tab1, tab2, tab3, tab4 = st.tabs([
+        ":studio_microphone: Voice-Over Builder",
+        ":musical_note: Song to Voice",
+        ":speaking_head: Text-to-Speech",
+        ":robot_face: Models",
+        ":bar_chart: Analytics",
+    ])
+
+    with builder_tab:
+        st.markdown("### Voice-Over Builder")
+        st.markdown("Upload the voice you want, upload the song or beat, enter the line, then generate the take.")
+
+        left, right = st.columns([2, 1])
+        with left:
+            voice_files = st.file_uploader(
+                "Voice to clone",
+                type=["wav", "mp3", "m4a", "flac", "ogg", "aac", "aiff"],
+                accept_multiple_files=True,
+                key="builder_voice_files",
+            )
+            if voice_files:
+                st.caption(f"{len(voice_files)} voice sample(s) selected")
+                st.audio(voice_files[0])
+
+            target_audio = st.file_uploader(
+                "Song, beat, or audio that needs the voice",
+                type=["wav", "mp3", "m4a", "flac", "ogg", "aac", "aiff"],
+                key="builder_target_audio",
+            )
+            if target_audio:
+                st.audio(target_audio)
+
+            script_text = st.text_area(
+                "Voice-over text",
+                height=140,
+                placeholder="Type what the cloned voice should say over the song or beat...",
+                key="builder_script_text",
+            )
+
+        with right:
+            mode = st.selectbox(
+                "Output mode",
+                ["Voice-over on beat/song", "Replace vocals in song", "Convert spoken/rap clip"],
+                key="builder_mode",
+            )
+            voice_source_type = st.selectbox(
+                "Voice sample type",
+                ["speech", "song", "text"],
+                index=0,
+                key="builder_voice_source_type",
+            )
+            voice_label = st.text_input("Voice label", value="Authorized_Voice", key="builder_voice_label")
+            mood = st.selectbox("Delivery", ["default", "aggressive", "storytelling", "emotional"], key="builder_mood")
+            voice_gain_db = st.slider("Voice gain", -12.0, 12.0, 0.0, 0.5, key="builder_voice_gain")
+            bed_gain_db = st.slider("Beat/song bed gain", -18.0, 3.0, -3.0, 0.5, key="builder_bed_gain")
+            has_permission = st.checkbox(
+                "I own this voice or have explicit written permission/license to use it.",
+                value=False,
+                key="builder_permission",
+            )
+            generate = st.button("Generate Voice-Over", type="primary", use_container_width=True)
+
+        progress_bar = st.progress(0)
+        status_box = st.empty()
+
+        if generate:
+            try:
+                with st.spinner("Building voice and generating audio..."):
+                    result = run_voiceover_builder(
+                        voice_files=voice_files,
+                        target_audio=target_audio,
+                        voice_label=voice_label,
+                        voice_source_type=voice_source_type,
+                        mode=mode,
+                        script_text=script_text,
+                        has_permission=has_permission,
+                        voice_gain_db=voice_gain_db,
+                        bed_gain_db=bed_gain_db,
+                        mood=mood,
+                        status_box=status_box,
+                        progress_bar=progress_bar,
+                    )
+                st.session_state.builder_last_result = result
+                refresh_saved_voices()
+            except Exception as e:
+                status_box.error(str(e))
+
+        result = st.session_state.get("builder_last_result")
+        if result:
+            st.markdown("#### Output")
+            audio_player(result["output"])
+            with open(result["output"], "rb") as f:
+                st.download_button(
+                    "Download WAV",
+                    data=f.read(),
+                    file_name=Path(result["output"]).name,
+                    mime="audio/wav",
+                    use_container_width=True,
+                )
+            report = result.get("report") or {}
+            score = report.get("estimated_accuracy", {})
+            if score:
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Accuracy", f"{score.get('score', 0)}%")
+                c2.metric("Pitch", f"{score.get('pitch', 0)}%")
+                c3.metric("Timbre", f"{score.get('timbre', 0)}%")
+                c4.metric("Confidence", f"{score.get('confidence', 0)}%")
+                st.caption("Accuracy is an engineering estimate from pitch, timbre envelope, loudness, and reference duration.")
+            if result.get("report_path"):
+                st.code(result["report_path"])
 
     with tab1:
         st.markdown("### :musical_note: Put Song Lyrics Into an Authorized Voice")
