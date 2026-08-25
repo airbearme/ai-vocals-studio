@@ -43,13 +43,19 @@ export default async function handler(req, res) {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     const files = Array.isArray(body.files) ? body.files : [];
     const text = String(body.text || "").trim();
+    const taskMode = String(body.taskMode || "voiceover");
+    const supportedTasks = new Set(["voiceover", "song_replace", "clip_convert"]);
+    if (!supportedTasks.has(taskMode)) return sendJson(res, 400, { ok: false, error: "Unsupported worker task mode." });
     if (!body.permission) return sendJson(res, 400, { ok: false, error: "Permission confirmation is required." });
     if (!files.length) return sendJson(res, 400, { ok: false, error: "Upload at least one voice sample." });
-    if (!text) return sendJson(res, 400, { ok: false, error: "Voice-over text is required." });
+    if (taskMode === "voiceover" && !text) return sendJson(res, 400, { ok: false, error: "Voice-over text is required." });
+    if (taskMode !== "voiceover" && !body.targetFile?.data) {
+      return sendJson(res, 400, { ok: false, error: "Target song/audio is required for replacement jobs." });
+    }
 
-    const totalBytes = files.reduce((sum, file) => sum + Number(file.size || 0), 0);
+    const totalBytes = files.reduce((sum, file) => sum + Number(file.size || 0), 0) + Number(body.targetFile?.size || 0);
     if (totalBytes > 14 * 1024 * 1024) {
-      return sendJson(res, 413, { ok: false, error: "Uploaded samples are too large for Vercel serverless. Use shorter clips or run the local app." });
+      return sendJson(res, 413, { ok: false, error: "Uploaded audio is too large for Vercel serverless queueing. Use shorter clips or run the local app/worker directly for large songs." });
     }
     const gate = qualityGate(body.referenceMetrics, body.studioQuality !== false);
     if (!gate.ok) {
@@ -76,21 +82,39 @@ export default async function handler(req, res) {
         url: publicUrl,
       });
     }
+    let storedTarget = null;
+    if (taskMode !== "voiceover") {
+      const target = body.targetFile;
+      const safeName = cleanName(target.name || "target-audio.wav").replace(/\s+/g, "_");
+      const path = `${jobPrefix}/target/${Date.now()}-${safeName}`;
+      const buffer = Buffer.from(String(target.data), "base64");
+      const publicUrl = await uploadObject(path, buffer, target.type || "application/octet-stream");
+      storedTarget = {
+        name: safeName,
+        type: target.type || "application/octet-stream",
+        size: Number(target.size || buffer.length),
+        path,
+        url: publicUrl,
+      };
+    }
+    const workerMode = taskMode === "song_replace" ? "song" : taskMode === "clip_convert" ? "clip" : "bed";
 
     const job = await createJob({
       status: "queued",
-      job_type: "local_worker_voiceover",
+      job_type: taskMode === "voiceover" ? "local_worker_voiceover" : "local_worker_audio_replace",
       voice_name: cleanName(body.voiceName),
       engine: "local best available",
       permission_confirmed: true,
       input_files: storedFiles,
       text,
-      mode: "bed",
+      mode: workerMode,
       settings: {
         mood: body.mood || "default",
         stability: Number(body.stability || 0.62),
         similarity: Number(body.similarity || 0.97),
         studioQuality: body.studioQuality !== false,
+        taskMode,
+        targetFile: storedTarget,
       },
       report: {
         queuedBy: "vercel",

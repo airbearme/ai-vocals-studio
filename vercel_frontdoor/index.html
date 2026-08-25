@@ -103,16 +103,30 @@
             <p class="small">Instant mode returns audio immediately. Worker mode queues the job for a local/GPU/container worker running Qwen, XTTS, RVC, Demucs, and DSP.</p>
           </div>
           <div class="field">
+            <label for="taskMode">Output task</label>
+            <select id="taskMode" name="taskMode">
+              <option value="voiceover" selected>Generate text voice-over</option>
+              <option value="song_replace">Replace vocals in song/audio</option>
+              <option value="clip_convert">Convert spoken/rap clip voice</option>
+            </select>
+            <p class="small">Replacement/conversion jobs use the queued worker so the app can run vocal separation, voice conversion, remixing, and scoring.</p>
+          </div>
+          <div class="field">
             <label for="voiceFiles">Voice samples</label>
             <input id="voiceFiles" name="voiceFiles" type="file" accept="audio/*" multiple required>
             <p class="small">Use clean single-speaker WAV/FLAC. Studio-match mode requires at least 20 seconds; 60+ seconds is better.</p>
             <div id="readiness" class="readiness small">Upload samples to check clone readiness.</div>
           </div>
-          <div class="field">
+          <div class="field" id="scriptField">
             <label for="scriptText">Voice-over text</label>
             <textarea id="scriptText" name="scriptText" required placeholder="Type what the cloned voice should say..."></textarea>
           </div>
-          <div class="field">
+          <div class="field" id="targetField" hidden>
+            <label for="targetFile">Song/audio to replace or convert</label>
+            <input id="targetFile" name="targetFile" type="file" accept="audio/*">
+            <p class="small">For songs, upload audio with a vocal to replace. For beats/instrumentals with no vocal, use text voice-over and the optional browser mix bed below.</p>
+          </div>
+          <div class="field" id="bedField">
             <label for="bedFile">Optional beat/song bed for browser mix</label>
             <input id="bedFile" name="bedFile" type="file" accept="audio/*">
           </div>
@@ -253,6 +267,24 @@
         box.className = `readiness small ${level}`;
         box.textContent = `Clone readiness: ${metrics.fitScore}% · ${metrics.totalDurationS}s voice · RMS ${metrics.averageRms}.${clipping} ${recommendation}`;
       }
+      function syncTaskUi() {
+        const taskMode = document.getElementById("taskMode").value;
+        const isVoiceover = taskMode === "voiceover";
+        const scriptField = document.getElementById("scriptField");
+        const targetField = document.getElementById("targetField");
+        const bedField = document.getElementById("bedField");
+        const processingMode = document.getElementById("processingMode");
+        const scriptText = document.getElementById("scriptText");
+        const targetFile = document.getElementById("targetFile");
+        scriptField.hidden = !isVoiceover;
+        targetField.hidden = isVoiceover;
+        bedField.hidden = !isVoiceover;
+        scriptText.required = isVoiceover;
+        targetFile.required = !isVoiceover;
+        if (!isVoiceover) processingMode.value = "worker";
+        processingMode.disabled = !isVoiceover;
+        button.textContent = isVoiceover ? "Clone Voice + Generate Voice-Over" : "Clone Voice + Replace Target Vocal";
+      }
       async function loadJobs() {
         const status = document.getElementById("supabaseStatus");
         const jobsEl = document.getElementById("jobs");
@@ -317,7 +349,11 @@
         event.preventDefault();
         const files = [...document.getElementById("voiceFiles").files];
         const bedFile = document.getElementById("bedFile").files[0];
+        const taskMode = document.getElementById("taskMode").value;
+        const isVoiceover = taskMode === "voiceover";
+        const targetFile = document.getElementById("targetFile").files[0];
         if (!files.length) return setStatus("Upload at least one voice sample.", true);
+        if (!isVoiceover && !targetFile) return setStatus("Upload the song/audio that should receive the cloned voice.", true);
         button.disabled = true;
         voiceAudio.hidden = true; mixAudio.hidden = true; downloadVoice.hidden = true; downloadMix.hidden = true;
         try {
@@ -330,7 +366,8 @@
           setStatus("Reading voice samples...");
           const encoded = [];
           for (const file of files) encoded.push({ name: file.name, type: file.type || "application/octet-stream", size: file.size, data: await readFileAsBase64(file) });
-          const processingMode = document.getElementById("processingMode").value;
+          const targetPayload = targetFile ? { name: targetFile.name, type: targetFile.type || "application/octet-stream", size: targetFile.size, data: await readFileAsBase64(targetFile) } : null;
+          const processingMode = isVoiceover ? document.getElementById("processingMode").value : "worker";
           setStatus(processingMode === "worker" ? "Queueing full local worker job in Supabase..." : "Cloning voice and generating voice-over on Vercel...");
           const response = await fetch(processingMode === "worker" ? "/api/queue-job" : "/api/clone-and-speak", {
             method: "POST",
@@ -338,7 +375,8 @@
             body: JSON.stringify({
               apiKey: document.getElementById("apiKey").value,
               voiceName: document.getElementById("voiceName").value,
-              text: document.getElementById("scriptText").value,
+              taskMode,
+              text: isVoiceover ? document.getElementById("scriptText").value : "",
               permission: document.getElementById("permission").checked,
               deleteVoice: document.getElementById("deleteVoice").checked,
               stability: Number(document.getElementById("stability").value),
@@ -346,6 +384,7 @@
               studioQuality: document.getElementById("studioQuality").checked,
               referenceMetrics: latestReferenceMetrics,
               files: encoded,
+              targetFile: targetPayload,
             }),
           });
           const payload = await response.json();
@@ -393,6 +432,8 @@
           box.textContent = `Could not analyze audio: ${err.message || err}`;
         }
       });
+      document.getElementById("taskMode").addEventListener("change", syncTaskUi);
+      syncTaskUi();
       loadJobs();
     </script>
   </body>

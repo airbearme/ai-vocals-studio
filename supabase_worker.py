@@ -42,7 +42,6 @@ class SupabaseClient:
             "/rest/v1/voiceover_jobs"
             "?select=*"
             "&status=eq.queued"
-            "&job_type=eq.local_worker_voiceover"
             "&order=created_at.asc"
             "&limit=1",
         )
@@ -81,17 +80,31 @@ class SupabaseClient:
         return f"{self.url}/storage/v1/object/public/{quote(self.bucket)}/{quote(object_path, safe='/')}"
 
 
+def _content_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix == ".mp3":
+        return "audio/mpeg"
+    if suffix == ".flac":
+        return "audio/flac"
+    if suffix == ".m4a":
+        return "audio/mp4"
+    return "audio/wav"
+
+
 def process_job(client: SupabaseClient, job: dict[str, Any], work_root: Path) -> None:
-    from clone_any_voice import synthesize_voiceover
+    from clone_any_voice import convert_target_audio, synthesize_voiceover
     from voice_cloner import build_voice_profile_from_sources
 
     job_id = str(job["id"])
     voice_name = str(job.get("voice_name") or f"Queued_Voice_{job_id[:8]}")
+    job_type = str(job.get("job_type") or "local_worker_voiceover")
+    mode = str(job.get("mode") or "bed")
     text = str(job.get("text") or "").strip()
     settings = job.get("settings") or {}
     mood = str(settings.get("mood") or "default")
+    vocals_gain_db = float(settings.get("vocalsGainDb") or settings.get("voiceGainDb") or 0.0)
     input_files = job.get("input_files") or []
-    if not text:
+    if job_type == "local_worker_voiceover" and not text:
         raise RuntimeError("Queued job has no text.")
     if not input_files:
         raise RuntimeError("Queued job has no input files.")
@@ -125,16 +138,27 @@ def process_job(client: SupabaseClient, job: dict[str, Any], work_root: Path) ->
     if not profile:
         raise RuntimeError("Could not build a voice profile from queued samples.")
 
-    output_audio = Path(synthesize_voiceover(profile, text, output_dir, mood=mood) or "")
+    if job_type == "local_worker_audio_replace" or mode in {"song", "clip"}:
+        target_meta = settings.get("targetFile") or {}
+        target_object = target_meta.get("path")
+        if not target_object:
+            raise RuntimeError("Queued replacement job has no target audio.")
+        suffix = Path(str(target_meta.get("name") or "target.wav")).suffix or ".wav"
+        target_path = job_dir / f"target{suffix}"
+        client.download_object(str(target_object), target_path)
+        target_type = "song" if mode == "song" else "clip"
+        output_audio = Path(convert_target_audio(profile, str(target_path), target_type, output_dir, vocals_gain_db) or "")
+    else:
+        output_audio = Path(synthesize_voiceover(profile, text, output_dir, mood=mood) or "")
     if not output_audio.exists():
-        raise RuntimeError("Local voiceover pipeline did not produce output audio.")
+        raise RuntimeError("Local voice pipeline did not produce output audio.")
 
     report_path = output_dir / "quality_report.json"
     report = {}
     if report_path.exists():
         report = json.loads(report_path.read_text(encoding="utf-8"))
     storage_path = f"completed/{job_id}/{output_audio.name}"
-    output_url = client.upload_object(storage_path, output_audio, "audio/wav")
+    output_url = client.upload_object(storage_path, output_audio, _content_type(output_audio))
     client.update_job(
         job_id,
         {
