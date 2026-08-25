@@ -67,7 +67,7 @@ def convert_target_audio(
 ) -> Optional[str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if target_type == "song":
-        from song_converter import change_song
+        from song_converter import change_song, write_conversion_report
 
         out, steps = change_song(
             target_audio,
@@ -80,10 +80,27 @@ def convert_target_audio(
         print(f"[ok] song conversion engine: {steps.get('conversion')}")
         score_path = output_dir / "converted_vocals.wav"
         if score_path.exists():
-            print_accuracy_score(profile, score_path)
+            score = print_accuracy_score(profile, score_path)
+            report = write_conversion_report(
+                output_dir / "quality_report.json",
+                profile=profile,
+                source_audio=target_audio,
+                output_audio=out,
+                engine=str(steps.get("conversion", "unknown")),
+                score=score,
+            )
+            print(f"[ok] quality report: {report}")
         return out
 
-    from song_converter import convert_vocals
+    from song_converter import _load_mono, convert_vocals, voiced_fraction, write_conversion_report
+
+    y = _load_mono(target_audio, 22050)
+    voice_fraction = voiced_fraction(y, 22050)
+    if voice_fraction < 0.08:
+        raise ValueError(
+            "Target audio has little or no detectable voice. Use --target-type bed "
+            "with --voiceover-text to place the cloned voice over a beat/instrumental."
+        )
 
     stem = Path(target_audio).stem.replace(" ", "_")
     out_path = output_dir / f"{stem}_in_{profile.get('name', 'voice')}.wav"
@@ -97,7 +114,17 @@ def convert_target_audio(
     if not ok:
         raise RuntimeError(msg)
     print(f"[ok] audio conversion engine: {msg}")
-    print_accuracy_score(profile, out_path)
+    score = print_accuracy_score(profile, out_path)
+    print(f"[ok] source voiced frames: {round(voice_fraction * 100.0, 1)}%")
+    report = write_conversion_report(
+        output_dir / "quality_report.json",
+        profile=profile,
+        source_audio=target_audio,
+        output_audio=out_path,
+        engine=msg,
+        score=score,
+    )
+    print(f"[ok] quality report: {report}")
     return str(out_path)
 
 
@@ -139,11 +166,16 @@ def score_voice_accuracy(profile: dict, audio_path: str | Path) -> dict:
         + 0.45 * max(0.0, timbre_score)
         + 0.10 * max(0.0, energy_score)
     )
+    confidence = min(
+        1.0,
+        max(0.0, float(target.get("reference_duration_s", target.get("duration_s", 0.0))) / 30.0),
+    )
     return {
         "score": round(float(np.clip(score, 0.0, 100.0)), 1),
         "pitch": round(float(np.clip(pitch_score * 100.0, 0.0, 100.0)), 1),
         "timbre": round(float(np.clip(timbre_score * 100.0, 0.0, 100.0)), 1),
         "energy": round(float(np.clip(energy_score * 100.0, 0.0, 100.0)), 1),
+        "confidence": round(float(confidence * 100.0), 1),
     }
 
 
@@ -152,7 +184,8 @@ def print_accuracy_score(profile: dict, audio_path: str | Path) -> dict:
     print(
         "[ok] estimated voice accuracy: "
         f"{score['score']}% "
-        f"(pitch={score['pitch']}%, timbre={score['timbre']}%, energy={score['energy']}%)"
+        f"(pitch={score['pitch']}%, timbre={score['timbre']}%, "
+        f"energy={score['energy']}%, confidence={score['confidence']}%)"
     )
     return score
 
@@ -178,7 +211,8 @@ def synthesize_voiceover(
             final = output_dir / f"{name}_voiceover_elevenlabs.wav"
             shutil.copy2(out, final)
             print("[ok] voice-over engine: ElevenLabs")
-            print_accuracy_score(profile, final)
+            score = print_accuracy_score(profile, final)
+            write_voiceover_report(output_dir / "quality_report.json", profile, final, "ElevenLabs", score)
             return str(final)
     except Exception as e:
         failures.append(f"ElevenLabs: {e}")
@@ -201,7 +235,8 @@ def synthesize_voiceover(
                 )
                 if result:
                     print("[ok] voice-over engine: Qwen3-TTS")
-                    print_accuracy_score(profile, result)
+                    score = print_accuracy_score(profile, result)
+                    write_voiceover_report(output_dir / "quality_report.json", profile, result, "Qwen3-TTS", score)
                     return str(result)
         except Exception as e:
             failures.append(f"Qwen3-TTS: {e}")
@@ -221,7 +256,8 @@ def synthesize_voiceover(
                 final = output_dir / f"{name}_voiceover_xtts.wav"
                 shutil.copy2(out, final)
                 print("[ok] voice-over engine: XTTS v2")
-                print_accuracy_score(profile, final)
+                score = print_accuracy_score(profile, final)
+                write_voiceover_report(output_dir / "quality_report.json", profile, final, "XTTS v2", score)
                 return str(final)
         except Exception as e:
             failures.append(f"XTTS: {e}")
@@ -236,12 +272,34 @@ def synthesize_voiceover(
         out = output_dir / f"{name}_voiceover_dsp.wav"
         convert_vocals(tts_path, profile, out, output_dir, progress_cb=_progress)
         print("[ok] voice-over engine: gTTS + DSP timbre mapping")
-        print_accuracy_score(profile, out)
+        score = print_accuracy_score(profile, out)
+        write_voiceover_report(output_dir / "quality_report.json", profile, out, "gTTS + DSP", score)
         return str(out)
     except Exception as e:
         failures.append(f"gTTS+DSP: {e}")
 
     raise RuntimeError("No voice-over backend succeeded: " + " | ".join(failures))
+
+
+def write_voiceover_report(
+    report_path: str | Path,
+    profile: dict,
+    output_audio: str | Path,
+    engine: str,
+    score: dict,
+) -> str:
+    from song_converter import write_conversion_report
+
+    report = write_conversion_report(
+        report_path,
+        profile=profile,
+        source_audio=profile.get("reference", ""),
+        output_audio=output_audio,
+        engine=engine,
+        score=score,
+    )
+    print(f"[ok] quality report: {report}")
+    return report
 
 
 def mix_voiceover_over_bed(

@@ -18,6 +18,7 @@ Only use this with voices you own or have permission to clone.
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import sys
 import threading
@@ -195,6 +196,29 @@ def estimate_pitch(y: np.ndarray, sr: int = 22050) -> tuple[float, float]:
         return 0.0, 0.0
 
 
+def voiced_fraction(y: np.ndarray, sr: int = 22050) -> float:
+    """Return the fraction of frames with detectable voice-like pitch."""
+    if not HAS_LIBROSA or y.size == 0:
+        return 0.0
+    if float(np.sqrt(np.mean(y ** 2))) < 1e-4:
+        return 0.0
+    try:
+        f0 = librosa.yin(y, fmin=librosa.note_to_hz("C2"),
+                         fmax=librosa.note_to_hz("C6"), sr=sr)
+        rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+        if rms.size != f0.size:
+            rms = np.interp(
+                np.linspace(0, 1, f0.size),
+                np.linspace(0, 1, rms.size),
+                rms,
+            )
+        threshold = max(1e-4, float(np.percentile(rms, 65)) * 0.25)
+        voiced = (f0 > 0) & np.isfinite(f0) & (rms > threshold)
+        return float(np.mean(voiced)) if f0.size else 0.0
+    except Exception:
+        return 0.0
+
+
 def band_energy_profile(y: np.ndarray, sr: int = 22050,
                         n_bands: int = 16) -> list[float]:
     """Long-term average per-band RMS dB profile of `y` (log-mel-like)."""
@@ -306,7 +330,8 @@ def convert_vocals(
     """
     cb = progress_cb or _noop
     name = profile.get("name", "voice")
-    voice_dir = Path(profile.get("voice_dir", Path("models") / "voices")) / name
+    configured_voice_dir = Path(profile.get("voice_dir", Path("models") / "voices" / name))
+    voice_dir = configured_voice_dir if configured_voice_dir.name == name else configured_voice_dir / name
     rvc_model = None
     for cand in (voice_dir / f"{name}.pth", voice_dir / "rvc_model.pth",
                  voice_dir / "model.pth"):
@@ -329,6 +354,35 @@ def convert_vocals(
 
     dsp_morph_vocals(vocals_path, profile, out_path, progress_cb=cb)
     return True, "DSP timbre mapping (RVC optional - train a model to upgrade)"
+
+
+def write_conversion_report(
+    report_path: str | Path,
+    *,
+    profile: dict,
+    source_audio: str | Path,
+    output_audio: str | Path,
+    engine: str,
+    score: dict,
+) -> str:
+    """Persist a machine-readable conversion quality report."""
+    report = {
+        "voice": profile.get("name", "voice"),
+        "reference": profile.get("reference"),
+        "source_audio": str(source_audio),
+        "output_audio": str(output_audio),
+        "engine": engine,
+        "estimated_accuracy": score,
+        "score_notes": [
+            "Score compares pitch, broad timbre envelope, and loudness to the cloned profile.",
+            "It is an engineering estimate, not proof of human-perceived identity.",
+            "RVC or neural TTS backends generally outperform DSP fallback on real voices.",
+        ],
+    }
+    report_path = Path(report_path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return str(report_path)
 
 
 # ─────────────────────────────────────────────────────────────────
