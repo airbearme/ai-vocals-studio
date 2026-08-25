@@ -364,6 +364,7 @@ def write_conversion_report(
     output_audio: str | Path,
     engine: str,
     score: dict,
+    plan: dict | None = None,
 ) -> str:
     """Persist a machine-readable conversion quality report."""
     report = {
@@ -372,6 +373,7 @@ def write_conversion_report(
         "source_audio": str(source_audio),
         "output_audio": str(output_audio),
         "engine": engine,
+        "plan": plan or {},
         "estimated_accuracy": score,
         "score_notes": [
             "Score compares pitch, broad timbre envelope, and loudness to the cloned profile.",

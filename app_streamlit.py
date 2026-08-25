@@ -340,6 +340,15 @@ def main():
     dataset_info = load_voice_dataset()
     st.sidebar.metric("Reference Audio Files", dataset_info['total_files'])
     st.sidebar.metric("Dataset Size", f"{dataset_info['total_size_mb']:.1f} MB")
+    with st.sidebar.expander("Engine status"):
+        try:
+            from engine_planner import get_engine_status
+
+            for engine in get_engine_status():
+                label = "ready" if engine["available"] else "unavailable"
+                st.caption(f"{engine['name']}: {label} - {engine['note']}")
+        except Exception as e:
+            st.caption(f"Engine status unavailable: {e}")
 
     # Main tabs
     builder_tab, tab1, tab2, tab3, tab4 = st.tabs([
@@ -443,6 +452,12 @@ def main():
                 )
             report = result.get("report") or {}
             score = report.get("estimated_accuracy", {})
+            plan = report.get("plan", {})
+            if plan:
+                p1, p2, p3 = st.columns(3)
+                p1.metric("Selected Engine", plan.get("engine", "unknown"))
+                p2.metric("Plan Confidence", f"{plan.get('confidence', 0)}%")
+                p3.metric("Reference Confidence", f"{plan.get('reference_confidence', 0)}%")
             if score:
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Accuracy", f"{score.get('score', 0)}%")

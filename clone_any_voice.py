@@ -66,8 +66,13 @@ def convert_target_audio(
     vocals_gain_db: float,
 ) -> Optional[str]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    from engine_planner import choose_best_plan
+
+    plan_mode = "song" if target_type == "song" else "clip"
     if target_type == "song":
         from song_converter import change_song, write_conversion_report
+        plan = choose_best_plan(profile=profile, mode=plan_mode, target_has_voice=True)
+        print(f"[ok] selected engine plan: {plan['engine']} ({plan['confidence']}% confidence)")
 
         out, steps = change_song(
             target_audio,
@@ -88,6 +93,7 @@ def convert_target_audio(
                 output_audio=out,
                 engine=str(steps.get("conversion", "unknown")),
                 score=score,
+                plan=plan,
             )
             print(f"[ok] quality report: {report}")
         return out
@@ -96,7 +102,10 @@ def convert_target_audio(
 
     y = _load_mono(target_audio, 22050)
     voice_fraction = voiced_fraction(y, 22050)
-    if voice_fraction < 0.08:
+    has_voice = voice_fraction >= 0.08
+    plan = choose_best_plan(profile=profile, mode=plan_mode, target_has_voice=has_voice)
+    print(f"[ok] selected engine plan: {plan['engine']} ({plan['confidence']}% confidence)")
+    if not has_voice:
         raise ValueError(
             "Target audio has little or no detectable voice. Use --target-type bed "
             "with --voiceover-text to place the cloned voice over a beat/instrumental."
@@ -123,6 +132,7 @@ def convert_target_audio(
         output_audio=out_path,
         engine=msg,
         score=score,
+        plan=plan,
     )
     print(f"[ok] quality report: {report}")
     return str(out_path)
@@ -200,6 +210,10 @@ def synthesize_voiceover(
     name = str(profile.get("name") or "cloned_voice")
     reference = profile.get("reference")
     failures: list[str] = []
+    from engine_planner import choose_best_plan
+
+    plan = choose_best_plan(profile=profile, mode="bed", target_has_voice=False)
+    print(f"[ok] selected voice-over plan: {plan['engine']} ({plan['confidence']}% confidence)")
 
     try:
         from elevenlabs_engine import ElevenLabsEngine
@@ -212,7 +226,7 @@ def synthesize_voiceover(
             shutil.copy2(out, final)
             print("[ok] voice-over engine: ElevenLabs")
             score = print_accuracy_score(profile, final)
-            write_voiceover_report(output_dir / "quality_report.json", profile, final, "ElevenLabs", score)
+            write_voiceover_report(output_dir / "quality_report.json", profile, final, "ElevenLabs", score, plan)
             return str(final)
     except Exception as e:
         failures.append(f"ElevenLabs: {e}")
@@ -236,7 +250,7 @@ def synthesize_voiceover(
                 if result:
                     print("[ok] voice-over engine: Qwen3-TTS")
                     score = print_accuracy_score(profile, result)
-                    write_voiceover_report(output_dir / "quality_report.json", profile, result, "Qwen3-TTS", score)
+                    write_voiceover_report(output_dir / "quality_report.json", profile, result, "Qwen3-TTS", score, plan)
                     return str(result)
         except Exception as e:
             failures.append(f"Qwen3-TTS: {e}")
@@ -257,7 +271,7 @@ def synthesize_voiceover(
                 shutil.copy2(out, final)
                 print("[ok] voice-over engine: XTTS v2")
                 score = print_accuracy_score(profile, final)
-                write_voiceover_report(output_dir / "quality_report.json", profile, final, "XTTS v2", score)
+                write_voiceover_report(output_dir / "quality_report.json", profile, final, "XTTS v2", score, plan)
                 return str(final)
         except Exception as e:
             failures.append(f"XTTS: {e}")
@@ -273,7 +287,7 @@ def synthesize_voiceover(
         convert_vocals(tts_path, profile, out, output_dir, progress_cb=_progress)
         print("[ok] voice-over engine: gTTS + DSP timbre mapping")
         score = print_accuracy_score(profile, out)
-        write_voiceover_report(output_dir / "quality_report.json", profile, out, "gTTS + DSP", score)
+        write_voiceover_report(output_dir / "quality_report.json", profile, out, "gTTS + DSP", score, plan)
         return str(out)
     except Exception as e:
         failures.append(f"gTTS+DSP: {e}")
@@ -287,6 +301,7 @@ def write_voiceover_report(
     output_audio: str | Path,
     engine: str,
     score: dict,
+    plan: dict | None = None,
 ) -> str:
     from song_converter import write_conversion_report
 
@@ -297,6 +312,7 @@ def write_voiceover_report(
         output_audio=output_audio,
         engine=engine,
         score=score,
+        plan=plan,
     )
     print(f"[ok] quality report: {report}")
     return report

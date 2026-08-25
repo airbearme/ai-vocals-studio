@@ -10,6 +10,8 @@ soundfile>=0.12.0
 librosa>=0.10.0
 Pillow>=9.0.0
 streamlit>=1.48.0
+pyworld>=0.3.5
+demucs>=4.0.0
 
 # For cloud training (optional but recommended)
 kaggle>=1.5.0
@@ -22,13 +24,10 @@ qwen-tts>=0.1.1
 # Get key at elevenlabs.io → Profile → API Keys ($5/mo Starter plan minimum)
 elevenlabs>=1.0.0
 
-# XTTS v2 zero-shot voice cloning (free fallback — runs locally, no API key)
-# Downloads ~1.8 GB XTTS v2 model on first use
-TTS>=0.23.0
-
-# RVC v2 — best audio-to-audio voice conversion (for rap/singing)
-# Install after training a model on Colab
-rvc-python>=0.0.17
+# XTTS v2 and RVC are installed through install_voice_engines.sh.
+# They currently require a Python 3.10/3.11 sidecar; this main app venv is
+# Python 3.12-compatible and will use Qwen3-TTS, ElevenLabs, WORLD/DSP, and
+# Demucs directly.
 
 # For voice conversion (optional - for local preprocessing)
 # so-vits-svc-fork==4.2.30

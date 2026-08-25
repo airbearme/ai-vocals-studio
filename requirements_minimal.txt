@@ -11,11 +11,14 @@ Pillow>=9.0.0
 kaggle>=1.5.0
 requests>=2.28.0
 streamlit>=1.48.0
+pyworld>=0.3.5
+demucs>=4.0.0
+elevenlabs>=2.0.0
 
 # Qwen3-TTS - Best free voice cloning with 3-second rapid cloning
 qwen-tts>=0.1.1
 
-# Optional - install separately if needed
-# elevenlabs>=1.0.0  # Requires API key
-# TTS  # Install with: pip install TTS
-# rvc-python>=0.0.17  # Install with: pip install rvc-python
+# Optional high-end sidecar engines:
+#   ./install_voice_engines.sh
+# XTTS and RVC require Python 3.10/3.11 and are not installed into this
+# Python 3.12 venv.
