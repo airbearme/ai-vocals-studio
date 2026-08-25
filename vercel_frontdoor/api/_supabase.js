@@ -11,9 +11,16 @@ function localRoot() {
 export function supabaseConfig() {
   const url = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
   const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+  let host = "";
+  try {
+    host = url ? new URL(url).host : "";
+  } catch {
+    host = "invalid-url";
+  }
   return {
     enabled: Boolean(url && key),
     url,
+    host,
     key,
     bucket: String(process.env.SUPABASE_STORAGE_BUCKET || DEFAULT_BUCKET),
   };
@@ -61,14 +68,19 @@ function localPublicUrl(objectPath) {
 export async function supabaseRequest(path, options = {}) {
   const cfg = supabaseConfig();
   if (!cfg.enabled) throw new Error("Supabase is not configured");
-  const response = await fetch(`${cfg.url}${path}`, {
-    ...options,
-    headers: {
-      apikey: cfg.key,
-      Authorization: `Bearer ${cfg.key}`,
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`${cfg.url}${path}`, {
+      ...options,
+      headers: {
+        apikey: cfg.key,
+        Authorization: `Bearer ${cfg.key}`,
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    throw new Error(`Supabase network error for ${cfg.host || "unknown host"}: ${error.message || String(error)}`);
+  }
   if (response.ok) return response;
   const text = await response.text();
   throw new Error(`Supabase ${response.status}: ${text || response.statusText}`);
@@ -152,7 +164,7 @@ export async function uploadObject(objectPath, buffer, contentType = "applicatio
     },
     body: buffer,
   });
-  return `${cfg.url}/storage/v1/object/public/${encodeURIComponent(cfg.bucket)}/${path}`;
+  return `${cfg.url}/storage/v1/object/public/${encodeURIComponent(cfg.bucket)}/${objectPath}`;
 }
 
 export async function uploadAudio(path, buffer, contentType = "audio/mpeg") {
@@ -168,6 +180,38 @@ export async function listJobs(limit = 12) {
     `/rest/v1/voiceover_jobs?select=id,created_at,status,voice_name,engine,output_url,report,error&order=created_at.desc&limit=${Number(limit) || 12}`,
   );
   return response.json();
+}
+
+export async function storageHealth() {
+  const cfg = storageConfig();
+  if (cfg.provider === "local") {
+    await ensureLocalRoot();
+    return {
+      ok: true,
+      provider: "local",
+      configured: true,
+      localRoot: cfg.localRoot,
+    };
+  }
+  try {
+    await supabaseRequest("/rest/v1/voiceover_jobs?select=id&limit=1");
+    return {
+      ok: true,
+      provider: "supabase",
+      configured: true,
+      host: cfg.supabase.host,
+      bucket: cfg.supabase.bucket,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      provider: "supabase",
+      configured: true,
+      host: cfg.supabase.host,
+      bucket: cfg.supabase.bucket,
+      error: error.message || String(error),
+    };
+  }
 }
 
 export function localObjectPath(objectPath) {

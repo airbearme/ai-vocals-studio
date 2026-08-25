@@ -135,6 +135,9 @@
             </select>
             <p class="small">Use center-channel for quick checks. Use Demucs for better real song separation after the model is cached on the worker.</p>
           </div>
+          <div id="proMatchNotice" class="readiness small" hidden>
+            Pro-match replacement requires a trained RVC model on the worker for this voice. Without RVC, the worker will stop instead of returning a weaker DSP clone.
+          </div>
           <div class="field" id="bedField">
             <label for="bedFile">Optional beat/song bed for browser mix</label>
             <input id="bedFile" name="bedFile" type="file" accept="audio/*">
@@ -195,6 +198,7 @@
           <p class="small">Hosted Vercel generation uses ElevenLabs IVC + TTS. Worker jobs use Supabase in production or local filesystem storage for local/self-hosted runs.</p>
           <h3>Recent jobs</h3>
           <div id="supabaseStatus" class="small">Checking storage...</div>
+          <div id="storageHealth" class="small">Checking storage health...</div>
           <div id="jobs" class="jobs"></div>
         </aside>
       </section>
@@ -302,16 +306,19 @@
       function syncTaskUi() {
         const taskMode = document.getElementById("taskMode").value;
         const isVoiceover = taskMode === "voiceover";
+        const isPro = document.getElementById("qualityTarget").value === "pro" && document.getElementById("studioQuality").checked;
         const scriptField = document.getElementById("scriptField");
         const targetField = document.getElementById("targetField");
         const bedField = document.getElementById("bedField");
         const separationField = document.getElementById("separationField");
+        const proMatchNotice = document.getElementById("proMatchNotice");
         const processingMode = document.getElementById("processingMode");
         const scriptText = document.getElementById("scriptText");
         const targetFile = document.getElementById("targetFile");
         scriptField.hidden = !isVoiceover;
         targetField.hidden = isVoiceover;
         separationField.hidden = taskMode !== "song_replace";
+        proMatchNotice.hidden = isVoiceover || !isPro;
         bedField.hidden = !isVoiceover;
         scriptText.required = isVoiceover;
         targetFile.required = !isVoiceover;
@@ -321,8 +328,18 @@
       }
       async function loadJobs() {
         const status = document.getElementById("supabaseStatus");
+        const healthEl = document.getElementById("storageHealth");
         const jobsEl = document.getElementById("jobs");
         try {
+          const healthResponse = await fetch("/api/storage-health");
+          const health = await healthResponse.json();
+          if (health.ok) {
+            healthEl.textContent = health.provider === "supabase"
+              ? `Storage health: Supabase reachable (${health.host}).`
+              : "Storage health: local filesystem ready.";
+          } else {
+            healthEl.textContent = `Storage health warning: ${health.error || "storage is not reachable"}`;
+          }
           const response = await fetch("/api/jobs");
           const payload = await response.json();
           const providerText = payload.provider === "supabase" ? "Supabase persistence enabled." : "Local filesystem storage enabled.";
@@ -466,6 +483,8 @@
         }
       });
       document.getElementById("taskMode").addEventListener("change", syncTaskUi);
+      document.getElementById("qualityTarget").addEventListener("change", syncTaskUi);
+      document.getElementById("studioQuality").addEventListener("change", syncTaskUi);
       syncTaskUi();
       loadJobs();
     </script>
