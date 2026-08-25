@@ -391,10 +391,13 @@ def write_conversion_report(
         "engine": engine,
         "plan": plan or {},
         "estimated_accuracy": score,
+        "reference_quality": profile.get("audio_profile", {}).get("reference_quality", {}),
+        "average_source_quality": profile.get("audio_profile", {}).get("average_source_quality"),
         "score_notes": [
             "Score compares pitch, broad timbre envelope, and loudness to the cloned profile.",
             "It is an engineering estimate, not proof of human-perceived identity.",
             "RVC or neural TTS backends generally outperform DSP fallback on real voices.",
+            "Reference quality measures voiced content, noise floor, clipping, and usable duration.",
         ],
     }
     report_path = Path(report_path)

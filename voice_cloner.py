@@ -43,7 +43,7 @@ try:
 except ImportError:                                   # pragma: no cover
     HAS_SF = False
 
-from song_converter import separate_vocals, _load_mono, band_energy_profile
+from song_converter import separate_vocals, _load_mono, band_energy_profile, voiced_fraction
 from voice_safety import VoiceSafetyError, validate_voice_clone_request
 
 _ProgressCB = Callable[[str, int], None]
@@ -155,6 +155,101 @@ def _analyze(audio: np.ndarray, sr: int) -> dict:
         "duration_s": round(float(len(audio) / sr), 2),
         "sample_rate": sr,
     }
+
+
+def _quality_metrics(audio: np.ndarray, sr: int) -> dict:
+    """Estimate whether a reference clip is useful for cloning."""
+    if audio.size == 0:
+        return {
+            "overall": 0.0,
+            "voiced_fraction": 0.0,
+            "snr_db": 0.0,
+            "clipping_fraction": 1.0,
+            "rms": 0.0,
+            "duration_s": 0.0,
+        }
+
+    y = audio.astype(np.float32)
+    duration = float(len(y) / sr)
+    rms = float(np.sqrt(np.mean(y ** 2)))
+    peak = float(np.max(np.abs(y))) if y.size else 0.0
+    clipping = float(np.mean(np.abs(y) >= 0.985)) if y.size else 1.0
+    vf = voiced_fraction(y, sr)
+
+    if HAS_LIBROSA and y.size > 2048:
+        frame_rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+        noise_floor = float(np.percentile(frame_rms, 10))
+        signal_level = float(np.percentile(frame_rms, 90))
+    else:
+        noise_floor = rms * 0.25
+        signal_level = rms
+    snr = 20.0 * np.log10((signal_level + 1e-7) / (noise_floor + 1e-7))
+
+    duration_score = min(1.0, duration / 12.0)
+    voiced_score = min(1.0, vf / 0.45)
+    snr_score = min(1.0, max(0.0, snr / 28.0))
+    loudness_score = min(1.0, max(0.0, rms / 0.08))
+    clipping_penalty = min(0.45, clipping * 12.0)
+    silence_penalty = 0.25 if peak < 0.02 else 0.0
+    overall = (
+        0.42 * voiced_score
+        + 0.26 * snr_score
+        + 0.18 * loudness_score
+        + 0.14 * duration_score
+        - clipping_penalty
+        - silence_penalty
+    )
+    return {
+        "overall": round(float(np.clip(overall, 0.0, 1.0)), 4),
+        "voiced_fraction": round(float(np.clip(vf, 0.0, 1.0)), 4),
+        "snr_db": round(float(snr), 2),
+        "clipping_fraction": round(float(clipping), 5),
+        "rms": round(float(rms), 5),
+        "duration_s": round(duration, 2),
+    }
+
+
+def _best_voiced_windows(
+    audio: np.ndarray,
+    sr: int,
+    *,
+    window_s: float = REFERENCE_DURATION,
+    max_windows: int = 1,
+) -> list[tuple[np.ndarray, dict]]:
+    """Pick high-quality voiced windows instead of blindly using the first/loudest audio."""
+    if audio.size == 0:
+        return []
+    win = int(window_s * sr)
+    if len(audio) <= win:
+        return [(audio, _quality_metrics(audio, sr))]
+
+    hop = max(1, int(2.0 * sr))
+    candidates: list[tuple[float, int, np.ndarray, dict]] = []
+    for start in range(0, max(1, len(audio) - win + 1), hop):
+        clip = audio[start:start + win]
+        metrics = _quality_metrics(clip, sr)
+        candidates.append((float(metrics["overall"]), start, clip, metrics))
+
+    if not candidates:
+        clip = audio[:win]
+        return [(clip, _quality_metrics(clip, sr))]
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    selected: list[tuple[np.ndarray, dict]] = []
+    used_ranges: list[tuple[int, int]] = []
+    min_gap = int(window_s * sr * 0.6)
+    for _, start, clip, metrics in candidates:
+        end = start + len(clip)
+        overlaps = any(start < used_end + min_gap and end > used_start - min_gap for used_start, used_end in used_ranges)
+        if overlaps:
+            continue
+        selected.append((clip, metrics))
+        used_ranges.append((start, end))
+        if len(selected) >= max_windows:
+            break
+    return selected or [(candidates[0][2], candidates[0][3])]
+
+
 def _trim_silence(audio: np.ndarray, sr: int, top_db: float = 28.0
                   ) -> np.ndarray:
     if not HAS_LIBROSA or audio.size < sr:
@@ -194,6 +289,13 @@ def _pick_loudest_segment(audio: np.ndarray, sr: int,
     return audio[best_start: best_start + win]
 
 
+def _pick_best_reference_segment(audio: np.ndarray, sr: int) -> tuple[np.ndarray, dict]:
+    windows = _best_voiced_windows(audio, sr, window_s=REFERENCE_DURATION, max_windows=1)
+    if windows:
+        return windows[0]
+    return audio, _quality_metrics(audio, sr)
+
+
 def extract_reference_audio(
     source_path: str | Path,
     source_type: str,
@@ -231,10 +333,11 @@ def extract_reference_audio(
         source = _trim_silence(source, SAMPLE_RATE)
 
     if source_type == "song":
-        ref = _pick_loudest_segment(source, SAMPLE_RATE)
+        ref, quality = _pick_best_reference_segment(source, SAMPLE_RATE)
     else:
-        cap = int(min(25.0 * SAMPLE_RATE, len(source)))
-        ref = source[:cap]
+        best, quality = _pick_best_reference_segment(source, SAMPLE_RATE)
+        cap = int(min(25.0 * SAMPLE_RATE, len(best)))
+        ref = best[:cap]
 
     if len(ref) < SAMPLE_RATE:
         pad = np.zeros(SAMPLE_RATE - len(ref), dtype=np.float32)
@@ -246,6 +349,7 @@ def extract_reference_audio(
     ref_path = work_dir / "reference.wav"
     sf.write(str(ref_path), ref.astype(np.float32), SAMPLE_RATE)
     src_meta["reference_duration_s"] = round(float(len(ref) / SAMPLE_RATE), 2)
+    src_meta["reference_quality"] = quality
     return str(ref_path), src_meta
 
 def build_voice_profile(
@@ -399,18 +503,25 @@ def build_voice_profile_from_sources(
             cb("No usable voiced audio found in sources.", 0)
             return None
 
-        cb("Combining references...", 68)
+        cb("Selecting strongest reference clips...", 68)
         silence = np.zeros(int(0.15 * SAMPLE_RATE), dtype=np.float32)
+        ranked_refs = sorted(
+            zip(refs, source_meta),
+            key=lambda item: float((item[1].get("reference_quality") or {}).get("overall", 0.0)),
+            reverse=True,
+        )
         combined_parts: list[np.ndarray] = []
         max_total = int(90.0 * SAMPLE_RATE)
         total_len = 0
-        for ref in refs:
+        selected_meta: list[dict] = []
+        for ref, meta in ranked_refs:
             remaining = max_total - total_len
             if remaining <= 0:
                 break
             clip = ref[:remaining]
             combined_parts.extend([clip, silence])
             total_len += len(clip) + len(silence)
+            selected_meta.append(meta)
         combined = np.concatenate(combined_parts).astype(np.float32)
         peak = np.max(np.abs(combined)) or 1.0
         combined = combined / peak * 0.95
@@ -422,7 +533,13 @@ def build_voice_profile_from_sources(
         audio_profile = _analyze(combined, SAMPLE_RATE)
         audio_profile.update({
             "source_count": len(source_meta),
+            "selected_source_count": len(selected_meta),
             "reference_duration_s": round(float(len(combined) / SAMPLE_RATE), 2),
+            "reference_quality": _quality_metrics(combined, SAMPLE_RATE),
+            "average_source_quality": round(float(np.mean([
+                float((meta.get("reference_quality") or {}).get("overall", 0.0))
+                for meta in source_meta
+            ])), 4),
         })
 
         rvc_available = (voice_dir / f"{safe}.pth").exists() or bool(
@@ -436,6 +553,7 @@ def build_voice_profile_from_sources(
             "audio_profile": audio_profile,
             "reference": str(ref_path),
             "sources": source_meta,
+            "selected_sources": selected_meta,
             "rvc_available": bool(rvc_available),
             "voice_dir": str(voice_dir),
             "methods": {

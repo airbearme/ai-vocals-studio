@@ -197,10 +197,17 @@ def estimate_reference_confidence(profile: dict[str, Any]) -> float:
     ap = profile.get("audio_profile", {}) or {}
     duration = float(ap.get("reference_duration_s", ap.get("duration_s", 0.0)) or 0.0)
     source_count = float(ap.get("source_count", 1.0) or 1.0)
+    quality = ap.get("reference_quality") or {}
+    quality_score = float(quality.get("overall", ap.get("average_source_quality", 0.65)) or 0.65)
     duration_score = min(1.0, duration / 60.0)
     source_score = min(1.0, source_count / 4.0)
     pitch_ok = 1.0 if float(ap.get("median_f0_hz", 0.0) or 0.0) > 40 else 0.35
-    return 100.0 * (0.55 * duration_score + 0.25 * source_score + 0.20 * pitch_ok)
+    return 100.0 * (
+        0.40 * duration_score
+        + 0.20 * source_score
+        + 0.20 * pitch_ok
+        + 0.20 * max(0.0, min(1.0, quality_score))
+    )
 
 
 def choose_best_plan(

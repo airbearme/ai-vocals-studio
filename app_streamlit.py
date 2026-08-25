@@ -486,6 +486,13 @@ def main():
                 c3.metric("Timbre", f"{score.get('timbre', 0)}%")
                 c4.metric("Confidence", f"{score.get('confidence', 0)}%")
                 st.caption("Accuracy is an engineering estimate from pitch, timbre envelope, loudness, and reference duration.")
+            ref_quality = report.get("reference_quality") or {}
+            if ref_quality:
+                q1, q2, q3 = st.columns(3)
+                q1.metric("Reference Quality", f"{round(float(ref_quality.get('overall', 0)) * 100, 1)}%")
+                q2.metric("Voiced Content", f"{round(float(ref_quality.get('voiced_fraction', 0)) * 100, 1)}%")
+                q3.metric("Noise/SNR", f"{ref_quality.get('snr_db', 0)} dB")
+                st.caption("For better cloning, upload clean single-speaker voice with low background music/noise and no clipping.")
             if result.get("report_path"):
                 st.code(result["report_path"])
 
