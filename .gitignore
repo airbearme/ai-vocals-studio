@@ -84,3 +84,4 @@ logs/
 .env
 .env*
 supabase/.temp/
+local_backups/
