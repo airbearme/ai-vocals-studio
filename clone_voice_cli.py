@@ -12,6 +12,7 @@ Usage:
                               [--model <hf-repo>]       # default: 0.6B on CPU, 1.7B on GPU
                               [--out outputs/my_clone.wav]
                               [--low-mem]
+                              --i-have-permission
 
 First run downloads the model (~1-3 GB) into the HuggingFace cache.
 Clones are also saved to models/voices/<name>/ so the web app can reuse them.
@@ -61,7 +62,16 @@ def main() -> int:
     ap.add_argument("--model", default=None, help="HuggingFace repo id to use")
     ap.add_argument("--out", default=None, help="output wav path")
     ap.add_argument("--low-mem", action="store_true", help="use float16 on CPU to save RAM")
+    ap.add_argument(
+        "--i-have-permission",
+        action="store_true",
+        help="confirm you own the voice or have explicit written permission/license to clone it",
+    )
     args = ap.parse_args()
+
+    if not args.i_have_permission:
+        print("[error] pass --i-have-permission to confirm this is an authorized voice.")
+        return 1
 
     ref = Path(args.ref)
     if not ref.exists():
@@ -98,13 +108,19 @@ def main() -> int:
         speaker_name=args.name,
         output_path=args.out,
         progress_cb=_progress,
+        has_permission=args.i_have_permission,
     )
     if not out:
         print("[error] cloning failed (see message above)")
         return 1
 
     # persist for reuse in the web app
-    engine.save_clone(args.name, ref_wav, description="Cloned via CLI")
+    engine.save_clone(
+        args.name,
+        ref_wav,
+        description="Cloned via CLI",
+        has_permission=args.i_have_permission,
+    )
     print(f"\n[ok] done! output : {out}")
     print(f"[ok] saved voice: models/voices/{args.name}/")
     return 0

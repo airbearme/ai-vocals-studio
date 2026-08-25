@@ -36,7 +36,7 @@ os.makedirs(MODELS, exist_ok=True)
 class AIVocalsStudio:
     def __init__(self, root):
         self.root = root
-        self.root.title("🎤 AI Vocals Studio - 2Pac Voice Cloning")
+        self.root.title("🎤 AI Vocals Studio - Authorized Voice Cloning")
         self.root.geometry("1000x700")
         
         # Dark theme
@@ -49,7 +49,7 @@ class AIVocalsStudio:
         
         # Create UI
         self.create_widgets()
-        self.load_2pac_data()
+        self.load_dataset_data()
         
     def create_widgets(self):
         # Main container
@@ -61,7 +61,7 @@ class AIVocalsStudio:
                                font=("Arial", 24, "bold"), fg='#00ff88', bg='#1a1a1a')
         title_label.pack(pady=(0, 10))
         
-        subtitle = tk.Label(main_frame, text="2Pac Voice Cloning & Generation", 
+        subtitle = tk.Label(main_frame, text="Authorized Voice Cloning & Generation", 
                            font=("Arial", 14), fg='#ffffff', bg='#1a1a1a')
         subtitle.pack(pady=(0, 20))
         
@@ -88,10 +88,10 @@ class AIVocalsStudio:
         
         # Instructions
         instructions = tk.Label(clone_frame, 
-                               text="Clone 2Pac's voice with just 3 seconds of audio!\n" +
+                               text="Clone an authorized voice with a short clean audio sample.\n" +
                                     "1. Select a reference audio file\n" +
                                     "2. Enter what's said in the audio\n" +
-                                    "3. Enter what you want 2Pac to say\n" +
+                                    "3. Enter what you want the authorized voice to say\n" +
                                     "4. Click 'Clone Voice'",
                                font=("Arial", 11), fg='#ffffff', bg='#2b2b2b',
                                justify=tk.LEFT)
@@ -122,7 +122,7 @@ class AIVocalsStudio:
         ref_text_entry.pack(fill=tk.X, pady=5)
         
         # Target text
-        tk.Label(ref_frame, text="What you want 2Pac to say:", font=("Arial", 12, "bold"),
+        tk.Label(ref_frame, text="What you want the authorized voice to say:", font=("Arial", 12, "bold"),
                 fg='#00ff88', bg='#2b2b2b').pack(anchor='w', pady=(10, 5))
         
         self.target_text_var = tk.StringVar(value="Thug life baby, we keep it real")
@@ -131,7 +131,19 @@ class AIVocalsStudio:
         target_text_entry.pack(fill=tk.X, pady=5)
         
         # Clone button
-        clone_btn = tk.Button(clone_frame, text="🎭 Clone 2Pac Voice", 
+        self.permission_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            ref_frame,
+            text="I own this voice or have explicit written permission/license to clone it.",
+            variable=self.permission_var,
+            bg='#2b2b2b',
+            fg='white',
+            selectcolor='#1a1a1a',
+            activebackground='#2b2b2b',
+            activeforeground='white',
+        ).pack(anchor='w', pady=(10, 5))
+
+        clone_btn = tk.Button(clone_frame, text="🎭 Clone Authorized Voice", 
                             command=self.clone_voice,
                             bg='#ff6b35', fg='white', font=("Arial", 14, "bold"),
                             height=2)
@@ -213,7 +225,7 @@ class AIVocalsStudio:
         self.notebook.add(dataset_frame, text="📁 Dataset")
         
         # Title
-        tk.Label(dataset_frame, text="2Pac Training Data",
+        tk.Label(dataset_frame, text="Authorized Training Data",
                 font=("Arial", 16, "bold"), fg='#00ff88', bg='#2b2b2b').pack(pady=20)
         
         # Dataset info
@@ -245,6 +257,13 @@ class AIVocalsStudio:
         if not os.path.exists(ref_audio):
             messagebox.showerror("Error", "Reference audio file not found")
             return
+
+        if not self.permission_var.get():
+            messagebox.showerror(
+                "Permission required",
+                "Confirm that you own this voice or have explicit permission/license to clone it."
+            )
+            return
         
         # Start cloning in background
         self.clone_progress.start()
@@ -275,15 +294,16 @@ class AIVocalsStudio:
                 ref_audio=ref_audio,
                 ref_text=ref_text,
                 target_text=target_text,
-                speaker_name="2Pac_Clone",
-                progress_cb=progress_cb
+                speaker_name="Authorized_Clone",
+                progress_cb=progress_cb,
+                has_permission=True,
             )
             
             if output_path:
                 self.root.after(0, lambda: self.clone_status.config(
                     text=f"✅ Voice cloned! Saved to: {output_path}"))
                 self.root.after(0, lambda: messagebox.showinfo("Success", 
-                    f"2Pac voice cloned successfully!\nSaved to: {output_path}"))
+                    f"Authorized voice cloned successfully!\nSaved to: {output_path}"))
             else:
                 self.root.after(0, lambda: self.clone_status.config(text="❌ Cloning failed"))
                 
@@ -313,11 +333,12 @@ class AIVocalsStudio:
                 if not self.qwen_engine:
                     self.qwen_engine = Qwen3TTSEngine()
                 
-                # For now, use voice design with 2Pac description
+                # Create an original voice design, not an imitation of a real person.
                 output_path = self.qwen_engine.design_voice(
                     text=text,
-                    voice_description="Deep, aggressive rap voice like 2Pac with authentic Westside gangsta delivery and emotional intensity",
-                    speaker_name="2Pac_TTS"
+                    voice_description="Original deep rap voice with gritty texture, confident delivery, and clear diction",
+                    speaker_name="Original_Rap_TTS",
+                    has_permission=True,
                 )
                 
                 if output_path:
@@ -362,9 +383,9 @@ class AIVocalsStudio:
         
         return info
     
-    def load_2pac_data(self):
-        """Load and display 2Pac dataset info"""
-        info = "📁 2Pac Training Dataset\n" + "="*40 + "\n\n"
+    def load_dataset_data(self):
+        """Load and display authorized dataset info"""
+        info = "📁 Authorized Training Dataset\n" + "="*40 + "\n\n"
         
         if os.path.exists(DATA):
             audio_files = []
@@ -385,7 +406,7 @@ class AIVocalsStudio:
                 info += "\n✅ Ready for voice cloning!\n"
             else:
                 info += "❌ No audio files found in dataset\n"
-                info += "Add 2Pac acapella files to get started\n"
+                info += "Add authorized reference recordings to get started\n"
         else:
             info += "❌ Dataset directory not found\n"
         

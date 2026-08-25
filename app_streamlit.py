@@ -129,7 +129,7 @@ def load_voice_dataset():
 
     return dataset_info
 
-def clone_voice_worker(ref_audio_path, ref_text, target_text, speaker_name, persist=True):
+def clone_voice_worker(ref_audio_path, ref_text, target_text, speaker_name, persist=True, has_permission=False):
     """Background worker for voice cloning (x-vector-only: transcript optional)"""
     try:
         if not st.session_state.qwen_engine:
@@ -161,7 +161,8 @@ def clone_voice_worker(ref_audio_path, ref_text, target_text, speaker_name, pers
             ref_text=(ref_text or None),
             target_text=target_text,
             speaker_name=speaker_name,
-            progress_cb=progress_cb
+            progress_cb=progress_cb,
+            has_permission=has_permission,
         )
 
         if output_path:
@@ -172,7 +173,8 @@ def clone_voice_worker(ref_audio_path, ref_text, target_text, speaker_name, pers
                 try:
                     st.session_state.qwen_engine.save_clone(
                         speaker_name, ref_audio_path,
-                        description="Cloned from uploaded reference audio")
+                        description="Cloned from uploaded reference audio",
+                        has_permission=has_permission)
                     refresh_saved_voices()
                 except Exception:
                     pass
@@ -207,9 +209,7 @@ def main():
     st.markdown("<h2 style='text-align: center; color: #00ff88;'>Consent-Based Voice Cloning & Generation</h2>", unsafe_allow_html=True)
     st.warning(
         "Permission required: only upload or clone a voice you own, created yourself, "
-        "or have explicit written permission/license to use. Do not clone artists, "
-        "celebrities, public figures, private people, or copyrighted recordings "
-        "without authorization."
+        "or have explicit written permission/license to use."
     )
 
     # Sidebar
@@ -236,8 +236,7 @@ def main():
         st.markdown("Upload the song, upload the authorized voice, then generate the lyrics with that cloned voice.")
         st.info(
             "By continuing, you confirm the reference audio and target voice are authorized "
-            "for this use, including any artist-style, label, estate, or rights-holder approval "
-            "that may be required."
+            "for this use, including any rights-holder approval that may be required."
         )
 
         col1, col2 = st.columns([2, 1])
@@ -308,7 +307,7 @@ def main():
 
                     thread = threading.Thread(
                         target=clone_voice_worker,
-                        args=(tmp_audio_path, ref_text, target_text, speaker_name.strip() or "Authorized_Voice", True)
+                        args=(tmp_audio_path, ref_text, target_text, speaker_name.strip() or "Authorized_Voice", True, has_permission)
                     )
                     thread.daemon = True
                     thread.start()
@@ -363,7 +362,7 @@ def main():
                                 st.session_state.qwen_engine = Qwen3TTSEngine()
                             with st.spinner("Generating with cloned voice..."):
                                 output_path = st.session_state.qwen_engine.generate_from_voice(
-                                    use_saved, text_input)
+                                    use_saved, text_input, has_permission=True)
                             if output_path:
                                 st.success(f"Speech generated in cloned voice '{use_saved}'!")
                                 audio_player(output_path)
@@ -387,7 +386,8 @@ def main():
                                 output_path = st.session_state.qwen_engine.design_voice(
                                     text=text_input,
                                     voice_description=voice_description,
-                                    speaker_name="Designed_Voice"
+                                    speaker_name="Designed_Voice",
+                                    has_permission=True,
                                 )
 
                             if output_path:

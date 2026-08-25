@@ -1337,6 +1337,7 @@ class StudioPro:
                     out = qe.clone_voice(
                         ref_audio=str(ref), ref_text=None, target_text=text,
                         speaker_name=model_name, progress_cb=self._prog,
+                        has_permission=True,
                     )
                     if out and os.path.exists(out):
                         self._log(f'🧠 Qwen3-TTS done: {len(text)} chars')

@@ -27,7 +27,7 @@ import shutil
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional
 
 import numpy as np
 
@@ -44,12 +44,14 @@ except ImportError:                                   # pragma: no cover
     HAS_SF = False
 
 from song_converter import separate_vocals, _load_mono, band_energy_profile
+from voice_safety import VoiceSafetyError, validate_voice_clone_request
 
 _ProgressCB = Callable[[str, int], None]
 
 DEFAULT_VOICES_DIR = Path(os.environ.get("VOICES_DIR", "models/voices"))
 SAMPLE_RATE = 22050
 REFERENCE_DURATION = 12.0    # seconds of clean voice kept as reference
+AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac", ".aiff"}
 
 
 def _noop(msg: str, pct: int) -> None:
@@ -60,6 +62,27 @@ def _safe_name(name: str) -> str:
     import re
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", name.strip())
     return safe.strip("._") or "cloned_voice"
+
+
+def collect_audio_sources(paths: Iterable[str | Path]) -> list[Path]:
+    """Expand files/folders into a stable list of supported audio files."""
+    out: list[Path] = []
+    for item in paths:
+        path = Path(item).expanduser()
+        if path.is_dir():
+            for child in sorted(path.rglob("*")):
+                if child.is_file() and child.suffix.lower() in AUDIO_EXTENSIONS:
+                    out.append(child)
+        elif path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS:
+            out.append(path)
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in out:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(path)
+    return unique
 
 
 def list_voices(voices_dir: str | Path = DEFAULT_VOICES_DIR) -> list[dict]:
@@ -232,6 +255,7 @@ def build_voice_profile(
     description: str = "",
     voices_dir: str | Path = DEFAULT_VOICES_DIR,
     progress_cb: Optional[_ProgressCB] = None,
+    has_permission: bool = False,
 ) -> Optional[dict]:
     """
     Create a persisted voice clone from any audio source.
@@ -240,6 +264,17 @@ def build_voice_profile(
     Returns the profile dict (also stored on disk), or None on failure.
     """
     cb = progress_cb or _noop
+    try:
+        validate_voice_clone_request(
+            has_permission=has_permission,
+            speaker_name=name,
+            description=description,
+            source_path=source_path,
+        )
+    except VoiceSafetyError as e:
+        cb(str(e), 0)
+        return None
+
     safe = _safe_name(name)
     voice_dir = Path(voices_dir) / safe
     voice_dir.mkdir(parents=True, exist_ok=True)
@@ -292,12 +327,141 @@ def build_voice_profile(
         return None
 
 
+def build_voice_profile_from_sources(
+    name: str,
+    source_paths: Iterable[str | Path],
+    source_type: str = "speech",
+    description: str = "",
+    voices_dir: str | Path = DEFAULT_VOICES_DIR,
+    progress_cb: Optional[_ProgressCB] = None,
+    has_permission: bool = False,
+) -> Optional[dict]:
+    """
+    Build one voice profile from multiple clips or a training-data folder.
+
+    Each source is cleaned first. Songs are source-separated before analysis;
+    speech clips are silence-trimmed. The final profile uses the combined
+    reference audio, capped to keep cloning fast and stable.
+    """
+    cb = progress_cb or _noop
+    sources = collect_audio_sources(source_paths)
+    if not sources:
+        cb("No supported audio sources found.", 0)
+        return None
+
+    try:
+        validate_voice_clone_request(
+            has_permission=has_permission,
+            speaker_name=name,
+            description=description,
+            source_path=" ".join(str(p) for p in sources[:5]),
+        )
+    except VoiceSafetyError as e:
+        cb(str(e), 0)
+        return None
+
+    if len(sources) == 1:
+        return build_voice_profile(
+            name,
+            sources[0],
+            source_type=source_type,
+            description=description,
+            voices_dir=voices_dir,
+            progress_cb=progress_cb,
+            has_permission=has_permission,
+        )
+
+    safe = _safe_name(name)
+    voice_dir = Path(voices_dir) / safe
+    voice_dir.mkdir(parents=True, exist_ok=True)
+
+    refs: list[np.ndarray] = []
+    source_meta: list[dict] = []
+    try:
+        total = len(sources)
+        for idx, source in enumerate(sources, start=1):
+            pct = 5 + int(60 * (idx - 1) / max(1, total))
+            cb(f"Preparing reference {idx}/{total}: {source.name}", pct)
+            ref_dir = voice_dir / "references" / f"{idx:04d}"
+            ref_wav, meta = extract_reference_audio(
+                source,
+                source_type,
+                ref_dir,
+                progress_cb=cb,
+            )
+            ref_audio = _load_mono(ref_wav, SAMPLE_RATE)
+            if ref_audio.size:
+                refs.append(ref_audio)
+                meta.update({"source": str(source), "reference": str(ref_wav)})
+                source_meta.append(meta)
+
+        if not refs:
+            cb("No usable voiced audio found in sources.", 0)
+            return None
+
+        cb("Combining references...", 68)
+        silence = np.zeros(int(0.15 * SAMPLE_RATE), dtype=np.float32)
+        combined_parts: list[np.ndarray] = []
+        max_total = int(90.0 * SAMPLE_RATE)
+        total_len = 0
+        for ref in refs:
+            remaining = max_total - total_len
+            if remaining <= 0:
+                break
+            clip = ref[:remaining]
+            combined_parts.extend([clip, silence])
+            total_len += len(clip) + len(silence)
+        combined = np.concatenate(combined_parts).astype(np.float32)
+        peak = np.max(np.abs(combined)) or 1.0
+        combined = combined / peak * 0.95
+
+        ref_path = voice_dir / "reference.wav"
+        sf.write(str(ref_path), combined, SAMPLE_RATE)
+
+        cb("Analyzing combined voice characteristics...", 78)
+        audio_profile = _analyze(combined, SAMPLE_RATE)
+        audio_profile.update({
+            "source_count": len(source_meta),
+            "reference_duration_s": round(float(len(combined) / SAMPLE_RATE), 2),
+        })
+
+        rvc_available = (voice_dir / f"{safe}.pth").exists() or bool(
+            list(voice_dir.glob("rvc_model.pth")))
+
+        profile = {
+            "name": safe,
+            "source_type": source_type,
+            "description": description,
+            "created": datetime.now().isoformat(timespec="seconds"),
+            "audio_profile": audio_profile,
+            "reference": str(ref_path),
+            "sources": source_meta,
+            "rvc_available": bool(rvc_available),
+            "voice_dir": str(voice_dir),
+            "methods": {
+                "dsp": True,
+                "qwen_neural": False,
+                "rvc": bool(rvc_available),
+            },
+        }
+
+        with open(voice_dir / "voice_profile.json", "w") as f:
+            json.dump(profile, f, indent=2)
+
+        cb("Voice profile built from all sources.", 100)
+        return profile
+    except Exception as e:
+        cb(f"Voice profile build failed: {str(e)}", 0)
+        return None
+
+
 def build_voice_profile_from_text(
     name: str,
     tts_speech_path: str | Path,
     description: str = "Generated from text",
     voices_dir: str | Path = DEFAULT_VOICES_DIR,
     progress_cb: Optional[_ProgressCB] = None,
+    has_permission: bool = False,
 ) -> Optional[dict]:
     """
     Build a voice profile from a text-to-speech sample, so you can clone the
@@ -305,4 +469,5 @@ def build_voice_profile_from_text(
     """
     return build_voice_profile(
         name, tts_speech_path, "text", description,
-        voices_dir=voices_dir, progress_cb=progress_cb)
+        voices_dir=voices_dir, progress_cb=progress_cb,
+        has_permission=has_permission)

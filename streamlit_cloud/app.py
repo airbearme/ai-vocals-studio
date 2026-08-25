@@ -91,9 +91,7 @@ def main() -> None:
     )
     st.warning(
         "Permission required: only upload or clone a voice you own, created yourself, "
-        "or have explicit written permission/license to use. Do not clone artists, "
-        "celebrities, public figures, private people, or copyrighted recordings "
-        "without authorization."
+        "or have explicit written permission/license to use."
     )
 
     file_count, size_mb = dataset_info()

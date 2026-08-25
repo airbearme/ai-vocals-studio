@@ -42,6 +42,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Union, List, Tuple
 
+from voice_safety import VoiceSafetyError, validate_voice_clone_request
+
 _ProgressCB = Callable[[str, int], None]
 
 # Status constants
@@ -237,12 +239,19 @@ class Qwen3TTSEngine:
                    ref_audio_path: Union[str, Path],
                    source_type: str = "speech",
                    description: str = "",
-                   voices_dir: Union[str, Path] = DEFAULT_VOICES_DIR) -> Path:
+                   voices_dir: Union[str, Path] = DEFAULT_VOICES_DIR,
+                   has_permission: bool = False) -> Path:
         """Persist a cloned voice so it can be re-used later.
 
         Stores `reference.wav` + `voice_profile.json` under
         `models/voices/<name>/`. Returns the voice directory.
         """
+        validate_voice_clone_request(
+            has_permission=has_permission,
+            speaker_name=name,
+            description=description,
+            source_path=ref_audio_path,
+        )
         name = _safe_voice_name(name)
         d = Path(voices_dir) / name
         d.mkdir(parents=True, exist_ok=True)
@@ -267,7 +276,8 @@ class Qwen3TTSEngine:
                             text: str,
                             language: str = "Auto",
                             output_path: Optional[Union[str, Path]] = None,
-                            progress_cb: Optional[_ProgressCB] = None) -> Optional[str]:
+                            progress_cb: Optional[_ProgressCB] = None,
+                            has_permission: bool = False) -> Optional[str]:
         """Speak `text` in a previously saved cloned voice.
 
         voice     : a saved voice name (looked up in models/voices),
@@ -294,6 +304,7 @@ class Qwen3TTSEngine:
             language=language,
             output_path=output_path,
             progress_cb=cb,
+            has_permission=has_permission,
         )
 
     def clone_voice(self,
@@ -303,7 +314,8 @@ class Qwen3TTSEngine:
                    speaker_name: str = "cloned_voice",
                    language: str = "Auto",
                    output_path: Optional[Union[str, Path]] = None,
-                   progress_cb: Optional[_ProgressCB] = None) -> Optional[str]:
+                   progress_cb: Optional[_ProgressCB] = None,
+                   has_permission: bool = False) -> Optional[str]:
         """
         Clone voice using reference audio
 
@@ -320,6 +332,17 @@ class Qwen3TTSEngine:
         Returns:
             Path to generated audio file or None if failed
         """
+        try:
+            validate_voice_clone_request(
+                has_permission=has_permission,
+                speaker_name=speaker_name,
+                source_path=ref_audio if isinstance(ref_audio, (str, Path)) else "",
+            )
+        except VoiceSafetyError as e:
+            if progress_cb:
+                progress_cb(str(e), 0)
+            return None
+
         if not self.model:
             if not self.load_model(progress_cb=progress_cb):
                 return None
@@ -370,7 +393,8 @@ class Qwen3TTSEngine:
                     speaker_name: str = "designed_voice",
                     language: str = "Auto",
                     output_path: Optional[Union[str, Path]] = None,
-                    progress_cb: Optional[_ProgressCB] = None) -> Optional[str]:
+                    progress_cb: Optional[_ProgressCB] = None,
+                    has_permission: bool = False) -> Optional[str]:
         """
         Design a voice using natural language description
 
@@ -385,6 +409,17 @@ class Qwen3TTSEngine:
         Returns:
             Path to generated audio file or None if failed
         """
+        try:
+            validate_voice_clone_request(
+                has_permission=has_permission,
+                speaker_name=speaker_name,
+                voice_description=voice_description,
+            )
+        except VoiceSafetyError as e:
+            if progress_cb:
+                progress_cb(str(e), 0)
+            return None
+
         if not self.model:
             # Load voice design model
             if not self.load_model("Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign", progress_cb):
@@ -452,12 +487,14 @@ class Qwen3TTSEngine:
 def quick_clone_voice(ref_audio_path: str,
                       ref_text: str,
                       target_text: str,
-                      output_name: str = "quick_clone") -> Optional[str]:
+                      output_name: str = "quick_clone",
+                      has_permission: bool = False) -> Optional[str]:
     """Quick voice cloning without engine setup"""
     engine = Qwen3TTSEngine()
     return engine.clone_voice(
         ref_audio=ref_audio_path,
         ref_text=ref_text,
         target_text=target_text,
-        speaker_name=output_name
+        speaker_name=output_name,
+        has_permission=has_permission,
     )

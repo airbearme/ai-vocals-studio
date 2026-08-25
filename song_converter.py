@@ -60,6 +60,18 @@ _HAS_DEMUCS = False
 def _ensure_demucs(progress_cb: Optional[_ProgressCB] = None) -> bool:
     """Import demucs on demand (only needed for neural separation)."""
     global _HAS_DEMUCS
+    if _demucs_ready.is_set():
+        return _HAS_DEMUCS
+    try:
+        if progress_cb:
+            progress_cb("Loading demucs (neural separation)...", 5)
+        import demucs  # noqa: F401
+        _HAS_DEMUCS = True
+    except Exception:
+        _HAS_DEMUCS = False
+    finally:
+        _demucs_ready.set()
+    return _HAS_DEMUCS
 
 # ─────────────────────────────────────────────────────────────────
 #  Step 1 — Vocal / instrumental separation
@@ -148,19 +160,6 @@ def separate_vocals(
 
     cb("Unknown method - using center", 0)
     return separate_vocals(song_path, work_dir, "center", cb)
-
-    if _demucs_ready.is_set():
-        return _HAS_DEMUCS
-    try:
-        if progress_cb:
-            progress_cb("Loading demucs (neural separation)...", 5)
-        import demucs  # noqa: F401
-        _HAS_DEMUCS = True
-    except Exception:
-        _HAS_DEMUCS = False
-    finally:
-        _demucs_ready.set()
-    return _HAS_DEMUCS
 
 
 def _load_mono(path: str | Path, sr: int = 22050) -> np.ndarray:
@@ -282,10 +281,10 @@ def _apply_envelope_shaping(y: np.ndarray, sr: int, target_db: list[float],
     """Shape long-term spectrum of `y` toward `target_db` band profile."""
     src_db = band_energy_profile(y, sr, n_bands)
     diff = np.clip(np.array(target_db) - np.array(src_db), -9.0, 9.0)
-    freqs = np.linspace(0.0, sr / 2.0, n_bands + 1)[1:]
+    freqs = np.linspace(0.0, sr / 2.0, n_bands)
     gain = 10.0 ** (diff / 20.0)
     n_taps = 255
-    fir = _signal.firwin2(n_taps, freqs / (sr / 2.0), gain, fs=sr)
+    fir = _signal.firwin2(n_taps, freqs, gain, fs=sr)
     shaped = _signal.filtfilt(fir, 1.0, y)
     return shaped.astype(np.float32)
 # ─────────────────────────────────────────────────────────────────
