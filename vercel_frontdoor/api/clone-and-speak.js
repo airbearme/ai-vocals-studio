@@ -51,9 +51,16 @@ export default async function handler(req, res) {
     }
     job = await createJob({
       status: "running",
+      job_type: "instant_voiceover",
       voice_name: cleanName(body.voiceName),
       engine: "ElevenLabs IVC",
       permission_confirmed: true,
+      text,
+      mode: "bed",
+      settings: {
+        stability: Number.isFinite(Number(body.stability)) ? Number(body.stability) : 0.55,
+        similarity: Number.isFinite(Number(body.similarity)) ? Number(body.similarity) : 0.9,
+      },
       input_files: files.map((file) => ({
         name: cleanName(file.name || "voice-sample"),
         type: file.type || "application/octet-stream",

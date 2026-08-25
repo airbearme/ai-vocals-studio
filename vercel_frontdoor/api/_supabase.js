@@ -55,7 +55,7 @@ export async function updateJob(id, patch) {
   return rows?.[0] || null;
 }
 
-export async function uploadAudio(path, buffer, contentType = "audio/mpeg") {
+export async function uploadObject(path, buffer, contentType = "application/octet-stream") {
   const cfg = supabaseConfig();
   if (!cfg.enabled) return null;
   const uploadPath = `/storage/v1/object/${encodeURIComponent(cfg.bucket)}/${path}`;
@@ -68,6 +68,10 @@ export async function uploadAudio(path, buffer, contentType = "audio/mpeg") {
     body: buffer,
   });
   return `${cfg.url}/storage/v1/object/public/${encodeURIComponent(cfg.bucket)}/${path}`;
+}
+
+export async function uploadAudio(path, buffer, contentType = "audio/mpeg") {
+  return uploadObject(path, buffer, contentType);
 }
 
 export async function listJobs(limit = 12) {
