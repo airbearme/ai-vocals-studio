@@ -1,9 +1,6 @@
-# Optional high-end voice engines for a Python 3.10/3.11 sidecar.
+# Optional high-end XTTS sidecar dependencies for Python 3.10/3.11.
 # Do not install this into the main Python 3.12 venv.
 
 TTS>=0.22.0
-rvc-python>=0.1.5
-faiss-cpu
-ffmpeg-python
 torch
 torchaudio

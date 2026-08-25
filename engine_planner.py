@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import shutil
 import importlib.util
 from pathlib import Path
@@ -12,6 +13,66 @@ def _importable(module_name: str) -> tuple[bool, str]:
     if importlib.util.find_spec(module_name) is not None:
         return True, "available"
     return False, "not installed"
+
+
+def _configured_path(path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    value = path.read_text(errors="ignore").strip()
+    if not value:
+        return None
+    if "=" in value:
+        value = value.split("=", 1)[1].strip()
+    return Path(value)
+
+
+def _sidecar_python(module_name: str | None = None) -> Path | None:
+    override = os.environ.get("VOICE_ENGINE_SIDECAR", "").strip()
+    candidates = [Path(override)] if override else []
+    cfg_names = []
+    if module_name == "rvc_python":
+        cfg_names.append(".rvc_engine_sidecar")
+    if module_name == "TTS":
+        cfg_names.append(".xtts_engine_sidecar")
+    cfg_names.append(".voice_engine_sidecar")
+    for cfg_name in cfg_names:
+        configured = _configured_path(Path(cfg_name))
+        if configured:
+            candidates.append(configured)
+    if module_name == "rvc_python":
+        candidates.append(Path("venv_rvc_engines/bin/python"))
+    if module_name == "TTS":
+        candidates.append(Path("venv_xtts_engines/bin/python"))
+    candidates.extend([
+        Path("venv_voice_engines/bin/python"),
+        Path(".venv_voice_engines/bin/python"),
+    ])
+    for path in candidates:
+        if path.exists() and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def _sidecar_importable(module_name: str) -> tuple[bool, str]:
+    python = _sidecar_python(module_name)
+    if not python:
+        return False, "no Python 3.10/3.11 sidecar configured"
+    try:
+        result = subprocess.run(
+            [str(python), "-c", f"import {module_name}"],
+            cwd=str(Path.cwd()),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except Exception as exc:
+        return False, f"sidecar check failed: {exc}"
+    if result.returncode == 0:
+        return True, f"available in sidecar: {python}"
+    err = (result.stderr or "").strip().splitlines()
+    return False, err[-1] if err else f"not installed in sidecar: {python}"
 
 
 def _has_api_key() -> bool:
@@ -43,7 +104,11 @@ def get_engine_status(profile: dict[str, Any] | None = None) -> list[dict[str, A
     demucs_ok, demucs_note = _importable("demucs")
     eleven_ok, eleven_note = _importable("elevenlabs")
     xtts_ok, xtts_note = _importable("TTS")
+    if not xtts_ok:
+        xtts_ok, xtts_note = _sidecar_importable("TTS")
     rvc_ok, rvc_note = _importable("rvc_python")
+    if not rvc_ok:
+        rvc_ok, rvc_note = _sidecar_importable("rvc_python")
 
     has_rvc_model = _rvc_model_present(profile or {}) if profile else False
     eleven_configured = eleven_ok and _has_api_key()

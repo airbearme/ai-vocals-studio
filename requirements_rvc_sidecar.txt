@@ -1,0 +1,8 @@
+# Optional RVC sidecar dependencies for Python 3.10/3.11.
+# Kept separate from XTTS because rvc-python pins numpy<=1.23.5.
+
+rvc-python>=0.1.5
+faiss-cpu
+ffmpeg-python
+torch
+torchaudio

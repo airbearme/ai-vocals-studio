@@ -352,6 +352,22 @@ def convert_vocals(
         except Exception:
             pass
 
+        try:
+            from clone_any_voice import _run_sidecar
+
+            cb("Running RVC sidecar voice conversion...", 20)
+            _run_sidecar([
+                "rvc",
+                "--voice-name", str(name),
+                "--input", str(vocals_path),
+                "--output", str(out_path),
+                "--models-dir", str(voice_dir.parent),
+            ])
+            cb("RVC sidecar conversion complete", 100)
+            return True, "RVC neural voice conversion (sidecar)"
+        except Exception as exc:
+            cb(f"RVC sidecar fell back to DSP: {exc}", 0)
+
     dsp_morph_vocals(vocals_path, profile, out_path, progress_cb=cb)
     return True, "DSP timbre mapping (RVC optional - train a model to upgrade)"
 

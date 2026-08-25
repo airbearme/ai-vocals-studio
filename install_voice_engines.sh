@@ -4,7 +4,6 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
 MAIN_PY="${MAIN_PY:-venv/bin/python}"
-SIDECAR_DIR="${SIDECAR_DIR:-venv_voice_engines}"
 
 if [ ! -x "$MAIN_PY" ]; then
   python3 -m venv venv
@@ -21,37 +20,45 @@ else
   echo "SoX not found. Optional: sudo apt-get install sox libsox-fmt-all ffmpeg"
 fi
 
-SIDECAR_PY=""
-for candidate in python3.11 python3.10; do
-  if command -v "$candidate" >/dev/null 2>&1; then
-    SIDECAR_PY="$candidate"
-    break
-  fi
-done
+if command -v uv >/dev/null 2>&1; then
+  echo "Installing Python 3.11 with uv for sidecar engines..."
+  uv python install 3.11
 
-if [ -z "$SIDECAR_PY" ]; then
+  echo "Creating XTTS sidecar..."
+  uv venv --python 3.11 venv_xtts_engines
+  uv pip install --python venv_xtts_engines/bin/python --upgrade pip setuptools wheel
+  uv pip install --python venv_xtts_engines/bin/python -r requirements_voice_engines_py310.txt
+  printf '%s\n' "venv_xtts_engines/bin/python" > .xtts_engine_sidecar
+
+  echo "Creating RVC sidecar..."
+  uv venv --python 3.11 venv_rvc_engines
+  uv pip install --python venv_rvc_engines/bin/python --upgrade pip setuptools wheel
+  uv pip install --python venv_rvc_engines/bin/python -r requirements_rvc_sidecar.txt
+  printf '%s\n' "venv_rvc_engines/bin/python" > .rvc_engine_sidecar
+elif command -v python3.11 >/dev/null 2>&1 || command -v python3.10 >/dev/null 2>&1; then
+  SIDECAR_PY="$(command -v python3.11 || command -v python3.10)"
+
+  echo "Creating XTTS sidecar with $SIDECAR_PY..."
+  "$SIDECAR_PY" -m venv venv_xtts_engines
+  venv_xtts_engines/bin/python -m pip install --upgrade pip setuptools wheel
+  venv_xtts_engines/bin/python -m pip install -r requirements_voice_engines_py310.txt
+  printf '%s\n' "venv_xtts_engines/bin/python" > .xtts_engine_sidecar
+
+  echo "Creating RVC sidecar with $SIDECAR_PY..."
+  "$SIDECAR_PY" -m venv venv_rvc_engines
+  venv_rvc_engines/bin/python -m pip install --upgrade pip setuptools wheel
+  venv_rvc_engines/bin/python -m pip install -r requirements_rvc_sidecar.txt
+  printf '%s\n' "venv_rvc_engines/bin/python" > .rvc_engine_sidecar
+else
   cat <<'EOF'
 
-XTTS/RVC sidecar not installed: Python 3.10 or 3.11 was not found.
-Install python3.11 or python3.10, then rerun:
+XTTS/RVC sidecars not installed: Python 3.10/3.11 and uv were not found.
+Install uv or Python 3.11, then rerun:
   ./install_voice_engines.sh
 
-The app still has:
-  - Qwen3-TTS local neural voice-over
-  - ElevenLabs API voice-over when ELEVENLABS_API_KEY is set
-  - WORLD/DSP fallback conversion
-  - Demucs vocal separation
+The app still has Qwen3-TTS, ElevenLabs when configured, WORLD/DSP conversion,
+and Demucs separation.
 EOF
-  exit 0
 fi
 
-echo "Creating optional XTTS/RVC sidecar with $SIDECAR_PY..."
-"$SIDECAR_PY" -m venv "$SIDECAR_DIR"
-"$SIDECAR_DIR/bin/python" -m pip install --upgrade pip
-"$SIDECAR_DIR/bin/python" -m pip install -r requirements_voice_engines_py310.txt
-
-cat > .voice_engine_sidecar <<EOF
-VOICE_ENGINE_SIDECAR=${SIDECAR_DIR}/bin/python
-EOF
-
-echo "Sidecar installed: ${SIDECAR_DIR}/bin/python"
+echo "Voice engine install complete."

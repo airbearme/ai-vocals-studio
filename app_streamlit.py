@@ -327,6 +327,27 @@ def main():
 
     # Sidebar
     st.sidebar.markdown("## :gear: Settings")
+    with st.sidebar.expander("Cloud engines"):
+        eleven_key = st.text_input(
+            "ElevenLabs API key",
+            type="password",
+            help="Optional. Enables the ElevenLabs backend for authorized voice-over jobs.",
+        )
+        if st.button("Save ElevenLabs key", use_container_width=True):
+            if not eleven_key.strip():
+                st.warning("Enter an API key first.")
+            else:
+                cfg_path = Path(".cloud_config")
+                lines = []
+                if cfg_path.exists():
+                    lines = [
+                        line for line in cfg_path.read_text(errors="ignore").splitlines()
+                        if not line.startswith("ELEVENLABS_API_KEY=")
+                    ]
+                lines.append(f"ELEVENLABS_API_KEY={eleven_key.strip()}")
+                cfg_path.write_text("\n".join(lines) + "\n")
+                os.environ["ELEVENLABS_API_KEY"] = eleven_key.strip()
+                st.success("ElevenLabs key saved for this deployment/workspace.")
 
     # Engine selection
     available_engines = ["gTTS (Free)"]

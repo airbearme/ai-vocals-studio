@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -56,6 +57,67 @@ def build_profile(args: argparse.Namespace) -> dict:
     if not profile:
         raise RuntimeError("Voice profile build failed.")
     return profile
+
+
+def _configured_path(path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    value = path.read_text(errors="ignore").strip()
+    if not value:
+        return None
+    if "=" in value:
+        value = value.split("=", 1)[1].strip()
+    return Path(value)
+
+
+def _sidecar_python(engine: str | None = None) -> Path | None:
+    override = os.environ.get("VOICE_ENGINE_SIDECAR", "").strip()
+    candidates = [Path(override)] if override else []
+    cfg_names = []
+    if engine == "rvc":
+        cfg_names.append(".rvc_engine_sidecar")
+    if engine == "xtts":
+        cfg_names.append(".xtts_engine_sidecar")
+    cfg_names.append(".voice_engine_sidecar")
+    for cfg_name in cfg_names:
+        configured = _configured_path(Path(cfg_name))
+        if configured:
+            candidates.append(configured)
+    if engine == "rvc":
+        candidates.append(Path("venv_rvc_engines/bin/python"))
+    if engine == "xtts":
+        candidates.append(Path("venv_xtts_engines/bin/python"))
+    candidates.extend([Path("venv_voice_engines/bin/python"), Path(".venv_voice_engines/bin/python")])
+    for path in candidates:
+        if path.exists() and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def _run_sidecar(args: list[str], timeout: int = 900) -> dict:
+    python = _sidecar_python(args[0] if args else None)
+    if not python:
+        raise RuntimeError("voice engine sidecar is not configured")
+    result = subprocess.run(
+        [str(python), "voice_engine_sidecar.py", *args],
+        cwd=str(Path.cwd()),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    payload = {}
+    for line in reversed((result.stdout or "").splitlines()):
+        try:
+            payload = json.loads(line)
+            break
+        except json.JSONDecodeError:
+            continue
+    if result.returncode != 0 or not payload.get("ok"):
+        err = payload.get("error") or payload.get("message") or result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(err or "sidecar engine failed")
+    return payload
 
 
 def convert_target_audio(
@@ -275,6 +337,23 @@ def synthesize_voiceover(
                 return str(final)
         except Exception as e:
             failures.append(f"XTTS: {e}")
+
+        try:
+            final = output_dir / f"{name}_voiceover_xtts_sidecar.wav"
+            _run_sidecar([
+                "xtts",
+                "--text", text,
+                "--voice-name", name,
+                "--reference", str(reference),
+                "--mood", mood,
+                "--output", str(final),
+            ])
+            print("[ok] voice-over engine: XTTS v2 sidecar")
+            score = print_accuracy_score(profile, final)
+            write_voiceover_report(output_dir / "quality_report.json", profile, final, "XTTS v2 sidecar", score, plan)
+            return str(final)
+        except Exception as e:
+            failures.append(f"XTTS sidecar: {e}")
 
     try:
         from gtts import gTTS
