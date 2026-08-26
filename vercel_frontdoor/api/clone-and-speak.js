@@ -46,13 +46,23 @@ function qualityGate(metrics, target = "studio") {
 async function elevenFetch(path, options) {
   const response = await fetch(`${ELEVEN_API}${path}`, options);
   if (response.ok) return response;
-  let detail = "";
+  const body = await response.text();
+  let detail = body;
   try {
-    detail = JSON.stringify(await response.json());
+    detail = body ? JSON.stringify(JSON.parse(body)) : "";
   } catch {
-    detail = await response.text();
+    // Upstream gateways sometimes return plain text instead of JSON.
   }
   throw new Error(`ElevenLabs ${response.status}: ${detail || response.statusText}`);
+}
+
+async function readJsonResponse(response, label) {
+  const body = await response.text();
+  try {
+    return body ? JSON.parse(body) : {};
+  } catch {
+    throw new Error(`${label} returned non-JSON data: ${body.replace(/\s+/g, " ").trim().slice(0, 180) || "empty response"}`);
+  }
 }
 
 export default async function handler(req, res) {
@@ -128,7 +138,7 @@ export default async function handler(req, res) {
       headers: { "xi-api-key": apiKey },
       body: voiceForm,
     });
-    const voice = await voiceResponse.json();
+    const voice = await readJsonResponse(voiceResponse, "ElevenLabs voice creation");
     const voiceId = voice.voice_id;
     if (!voiceId) throw new Error("ElevenLabs did not return a voice_id.");
 
