@@ -23,6 +23,12 @@ WORKER_JOB_TYPES = {
 }
 
 
+def default_rvc_trainer() -> str:
+    """Prefer the checked-in Applio adapter when running from the repo root."""
+    adapter = Path("scripts/applio_rvc_train.sh")
+    return str(adapter) if adapter.exists() else "rvc-train"
+
+
 def local_storage_root() -> Path:
     return Path(
         os.environ.get("LOCAL_STORAGE_DIR")
@@ -254,7 +260,7 @@ def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], 
         if not profile:
             raise RuntimeError("Could not build the authorized voice profile before RVC training.")
 
-        trainer = str(settings.get("trainer") or os.environ.get("RVC_TRAINER") or "rvc-train")
+        trainer = str(settings.get("trainer") or os.environ.get("RVC_TRAINER") or default_rvc_trainer())
         epochs = int(settings.get("epochs") or os.environ.get("RVC_TRAIN_EPOCHS") or 300)
         training_output = job_dir / "rvc_training_output"
         command = build_training_command(voice_dir, training_output, trainer=trainer, epochs=epochs)
