@@ -221,6 +221,21 @@
         statusEl.textContent = message;
         statusEl.classList.toggle("error", isError);
       }
+      async function readJsonResponse(response, action = "Request") {
+        const text = await response.text();
+        let payload;
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch {
+          const detail = text.replace(/\s+/g, " ").trim().slice(0, 180);
+          throw new Error(`${action} failed (${response.status}): ${detail || "the server returned a non-JSON response"}`);
+        }
+        if (!response.ok || !payload.ok) throw new Error(payload.error || `${action} failed (${response.status})`);
+        return payload;
+      }
+      function uploadBytes(files, targetFile) {
+        return files.reduce((sum, file) => sum + file.size, 0) + (targetFile?.size || 0);
+      }
       function readFileAsBase64(file) {
         return new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -344,7 +359,7 @@
           const capabilityItems = [...(capabilities.hosted || []), ...(capabilities.worker || [])];
           document.getElementById("capabilities").innerHTML = `<strong>Engine stack</strong>${capabilityItems.map((item) => `<div class="capability"><span>${item.name}</span><span>${item.available === false ? "not configured" : item.mode}</span></div>`).join("")}`;
           const healthResponse = await fetch("/api/storage-health");
-          const health = await healthResponse.json();
+          const health = await readJsonResponse(healthResponse, "Storage health check");
           if (health.ok) {
             healthEl.textContent = health.provider === "supabase"
               ? `Storage health: Supabase reachable (${health.host}).`
@@ -353,7 +368,7 @@
             healthEl.textContent = `Storage health warning: ${health.error || "storage is not reachable"}`;
           }
           const response = await fetch("/api/jobs");
-          const payload = await response.json();
+          const payload = await readJsonResponse(response, "Job history request");
           const providerText = payload.provider === "supabase" ? "Supabase persistence enabled." : "Local filesystem storage enabled.";
           status.textContent = payload.warning ? `${providerText} Job history warning: ${payload.warning}` : providerText;
           jobsEl.innerHTML = (payload.jobs || []).map((job) => {
@@ -361,7 +376,7 @@
             const report = job.report || {};
             const stage = report.stage || report.quality_target || "queued";
             const model = report.model_url || report.model_object;
-            const modelLink = model && /^https?:\\/\\//.test(model) ? `<a class="link" href="${model}" target="_blank" rel="noreferrer">Open trained model</a>` : "";
+            const modelLink = model && /^https?:\/\//.test(model) ? `<a class="link" href="${model}" target="_blank" rel="noreferrer">Open trained model</a>` : "";
             return `<div class="job"><strong>${job.voice_name || "Voice-over"} · ${job.status}</strong><span>${new Date(job.created_at).toLocaleString()} · ${job.engine || "unknown"} · stage: ${stage}</span>${link}${modelLink}</div>`;
           }).join("") || "<p class=\"small\">No jobs yet.</p>";
         } catch (err) {
@@ -418,6 +433,11 @@
         const targetFile = document.getElementById("targetFile").files[0];
         if (!files.length) return setStatus("Upload at least one voice sample.", true);
         if (!isVoiceover && !isTraining && !targetFile) return setStatus("Upload the song/audio that should receive the cloned voice.", true);
+        const uploadSize = uploadBytes(files, targetFile);
+        // Base64 plus JSON metadata expands the request; stay below Vercel's platform limit.
+        if (uploadSize > 3 * 1024 * 1024) {
+          return setStatus("These files are too large for the hosted Vercel upload path. Use FLAC/MP3 or run the local/GPU worker for longer training sets and songs.", true);
+        }
         button.disabled = true;
         voiceAudio.hidden = true; mixAudio.hidden = true; downloadVoice.hidden = true; downloadMix.hidden = true;
         try {
@@ -453,8 +473,7 @@
               targetFile: targetPayload,
             }),
           });
-          const payload = await response.json();
-          if (!response.ok || !payload.ok) throw new Error(payload.error || "Generation failed");
+          const payload = await readJsonResponse(response, "Voice generation request");
           if (processingMode === "worker") {
             document.getElementById("engineMetric").textContent = "Queued worker";
             document.getElementById("qualityMetric").textContent = `${latestReferenceMetrics?.fitScore || estimateFit(files)}%`;
