@@ -191,6 +191,33 @@ def _latest_rvc_model(output_dir: Path) -> Path:
     return candidates[0]
 
 
+def hydrate_rvc_model(client: SupabaseClient | LocalQueueClient, profile: dict[str, Any]) -> bool:
+    """Fetch a model trained by the Kaggle worker into this worker's profile."""
+    name = str(profile.get("name") or "").strip()
+    voice_dir = Path(profile.get("voice_dir") or Path("models") / "voices" / name)
+    if not name:
+        return False
+    model = voice_dir / "rvc_model.pth"
+    try:
+        client.download_object(f"models/{name}/rvc_model.pth", model)
+    except Exception:
+        return False
+    index = voice_dir / "rvc_model.index"
+    try:
+        client.download_object(f"models/{name}/rvc_model.index", index)
+    except Exception:
+        index = None
+    profile.update({
+        "rvc_available": True,
+        "rvc_model": model.name,
+        "rvc_index": index.name if index else None,
+        "methods": {**(profile.get("methods") or {}), "rvc": True},
+    })
+    profile_path = voice_dir / "voice_profile.json"
+    profile_path.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
+    return True
+
+
 def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], work_root: Path) -> None:
     from clone_any_voice import convert_target_audio, synthesize_voiceover
     from voice_cloner import build_voice_profile_from_sources
@@ -298,6 +325,7 @@ def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], 
     )
     if not profile:
         raise RuntimeError("Could not build a voice profile from queued samples.")
+    hydrate_rvc_model(client, profile)
 
     if job_type == "local_worker_audio_replace" or mode in {"song", "clip"}:
         target_meta = settings.get("targetFile") or {}

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from supabase_worker import WORKER_JOB_TYPES, default_rvc_trainer
+from supabase_worker import WORKER_JOB_TYPES, default_rvc_trainer, hydrate_rvc_model
 
 
 def test_worker_claims_rvc_training_jobs() -> None:
@@ -12,6 +12,10 @@ def test_worker_claims_rvc_training_jobs() -> None:
 
 def test_worker_defaults_to_checked_in_applio_adapter() -> None:
     assert default_rvc_trainer().endswith("scripts/applio_rvc_train.sh")
+
+
+def test_worker_exposes_remote_model_hydration() -> None:
+    assert callable(hydrate_rvc_model)
 
 
 def test_applio_adapter_contains_full_training_pipeline() -> None:

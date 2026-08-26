@@ -87,6 +87,19 @@ scripts/run_supabase_worker.sh
 The Vercel page queues this job; training runs on the local/GPU worker because
 Vercel functions are not suitable for long-running model training.
 
+### Free Kaggle GPU Worker
+
+When no local GPU is available, open
+`cloud/kaggle_rvc_worker.ipynb` in Kaggle, enable a free NVIDIA GPU, add
+Supabase Secrets named `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
+`SUPABASE_STORAGE_BUCKET`, then run all cells. The notebook claims one queued
+RVC training job, trains it with Applio, uploads the `.pth` and `.index` to
+Supabase, and the regular worker hydrates that model automatically.
+
+Free GPU availability and quotas are controlled by Kaggle; a session can be
+queued or unavailable during busy periods. The notebook is resumable at the
+job level and should be stopped after the training job completes.
+
 ## RVC Pro-Match Models
 
 The WORLD/DSP profile is a fallback and cannot provide near-indistinguishable
