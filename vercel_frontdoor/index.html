@@ -108,8 +108,9 @@
               <option value="voiceover" selected>Generate text voice-over</option>
               <option value="song_replace">Replace vocals in song/audio</option>
               <option value="clip_convert">Convert spoken/rap clip voice</option>
+              <option value="rvc_train">Train and register RVC model</option>
             </select>
-            <p class="small">Replacement/conversion jobs use the queued worker so the app can run vocal separation, voice conversion, remixing, and scoring.</p>
+            <p class="small">Replacement/conversion and RVC training jobs use the queued worker so the app can run local/GPU processing.</p>
           </div>
           <div class="field">
             <label for="voiceFiles">Voice samples</label>
@@ -306,6 +307,7 @@
       function syncTaskUi() {
         const taskMode = document.getElementById("taskMode").value;
         const isVoiceover = taskMode === "voiceover";
+        const isTraining = taskMode === "rvc_train";
         const isPro = document.getElementById("qualityTarget").value === "pro" && document.getElementById("studioQuality").checked;
         const scriptField = document.getElementById("scriptField");
         const targetField = document.getElementById("targetField");
@@ -316,15 +318,17 @@
         const scriptText = document.getElementById("scriptText");
         const targetFile = document.getElementById("targetFile");
         scriptField.hidden = !isVoiceover;
-        targetField.hidden = isVoiceover;
+        targetField.hidden = isVoiceover || isTraining;
         separationField.hidden = taskMode !== "song_replace";
-        proMatchNotice.hidden = isVoiceover || !isPro;
+        proMatchNotice.hidden = isVoiceover || isTraining || !isPro;
         bedField.hidden = !isVoiceover;
         scriptText.required = isVoiceover;
-        targetFile.required = !isVoiceover;
+        targetFile.required = !isVoiceover && !isTraining;
         if (!isVoiceover) processingMode.value = "worker";
         processingMode.disabled = !isVoiceover;
-        button.textContent = isVoiceover ? "Clone Voice + Generate Voice-Over" : "Clone Voice + Replace Target Vocal";
+        button.textContent = isTraining
+          ? "Validate + Train RVC Model"
+          : isVoiceover ? "Clone Voice + Generate Voice-Over" : "Clone Voice + Replace Target Vocal";
       }
       async function loadJobs() {
         const status = document.getElementById("supabaseStatus");
@@ -398,9 +402,10 @@
         const bedFile = document.getElementById("bedFile").files[0];
         const taskMode = document.getElementById("taskMode").value;
         const isVoiceover = taskMode === "voiceover";
+        const isTraining = taskMode === "rvc_train";
         const targetFile = document.getElementById("targetFile").files[0];
         if (!files.length) return setStatus("Upload at least one voice sample.", true);
-        if (!isVoiceover && !targetFile) return setStatus("Upload the song/audio that should receive the cloned voice.", true);
+        if (!isVoiceover && !isTraining && !targetFile) return setStatus("Upload the song/audio that should receive the cloned voice.", true);
         button.disabled = true;
         voiceAudio.hidden = true; mixAudio.hidden = true; downloadVoice.hidden = true; downloadMix.hidden = true;
         try {
@@ -415,7 +420,7 @@
           for (const file of files) encoded.push({ name: file.name, type: file.type || "application/octet-stream", size: file.size, data: await readFileAsBase64(file) });
           const targetPayload = targetFile ? { name: targetFile.name, type: targetFile.type || "application/octet-stream", size: targetFile.size, data: await readFileAsBase64(targetFile) } : null;
           const processingMode = isVoiceover ? document.getElementById("processingMode").value : "worker";
-          setStatus(processingMode === "worker" ? "Queueing full local worker job in Supabase..." : "Cloning voice and generating voice-over on Vercel...");
+          setStatus(isTraining ? "Queueing RVC training job for the local worker..." : processingMode === "worker" ? "Queueing full local worker job in Supabase..." : "Cloning voice and generating voice-over on Vercel...");
           const response = await fetch(processingMode === "worker" ? "/api/queue-job" : "/api/clone-and-speak", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

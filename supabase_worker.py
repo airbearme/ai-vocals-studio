@@ -16,7 +16,11 @@ import requests
 
 
 DEFAULT_BUCKET = "voiceovers"
-WORKER_JOB_TYPES = {"local_worker_voiceover", "local_worker_audio_replace"}
+WORKER_JOB_TYPES = {
+    "local_worker_voiceover",
+    "local_worker_audio_replace",
+    "local_worker_rvc_train",
+}
 
 
 def local_storage_root() -> Path:
@@ -170,9 +174,26 @@ def _content_type(path: Path) -> str:
     return "audio/wav"
 
 
+def _latest_rvc_model(output_dir: Path) -> Path:
+    candidates = sorted(
+        (path for path in output_dir.rglob("*.pth") if path.stat().st_size >= 10_000),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        raise RuntimeError(f"RVC trainer produced no valid .pth model in {output_dir}")
+    return candidates[0]
+
+
 def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], work_root: Path) -> None:
     from clone_any_voice import convert_target_audio, synthesize_voiceover
     from voice_cloner import build_voice_profile_from_sources
+    from rvc_training import (
+        build_training_command,
+        import_rvc_model,
+        run_training_command,
+        validate_training_dataset,
+    )
 
     job_id = str(job["id"])
     voice_name = str(job.get("voice_name") or f"Queued_Voice_{job_id[:8]}")
@@ -211,6 +232,55 @@ def process_job(client: SupabaseClient | LocalQueueClient, job: dict[str, Any], 
         local_sources.append(str(local_path))
     if not local_sources:
         raise RuntimeError("No downloadable input files were found.")
+
+    if job_type == "local_worker_rvc_train":
+        training_report = validate_training_dataset(voice_dir, min_files=3, min_duration_s=90.0)
+        client.update_job(job_id, {
+            "engine": "RVC trainer",
+            "report": {"stage": "dataset_validated", "training": training_report},
+        })
+        if not training_report["ready"]:
+            raise RuntimeError("Reference set failed RVC readiness checks; upload 90+ seconds of clean voice in 3+ clips.")
+
+        persistent_voices = Path(settings.get("voicesDir") or "models/voices")
+        profile = build_voice_profile_from_sources(
+            name=voice_name,
+            source_paths=local_sources,
+            source_type="speech",
+            description=f"Queued RVC training job {job_id}",
+            voices_dir=persistent_voices,
+            has_permission=True,
+        )
+        if not profile:
+            raise RuntimeError("Could not build the authorized voice profile before RVC training.")
+
+        trainer = str(settings.get("trainer") or os.environ.get("RVC_TRAINER") or "rvc-train")
+        epochs = int(settings.get("epochs") or os.environ.get("RVC_TRAIN_EPOCHS") or 300)
+        training_output = job_dir / "rvc_training_output"
+        command = build_training_command(voice_dir, training_output, trainer=trainer, epochs=epochs)
+        client.update_job(job_id, {
+            "engine": f"RVC trainer ({trainer})",
+            "report": {"stage": "training", "training": training_report, "command": command},
+        })
+        result = run_training_command(command)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "RVC trainer failed")
+        model = _latest_rvc_model(training_output)
+        index = next(training_output.rglob("*.index"), None)
+        profile = import_rvc_model(model, Path(profile["voice_dir"]), index_path=index)
+        report = {
+            "stage": "registered",
+            "training": training_report,
+            "model": str(Path(profile["voice_dir"]) / "rvc_model.pth"),
+            "index": str(Path(profile["voice_dir"]) / "rvc_model.index") if index else None,
+            "engine": "RVC",
+        }
+        client.update_job(job_id, {
+            "status": "complete",
+            "engine": "RVC",
+            "report": report,
+        })
+        return
 
     profile = build_voice_profile_from_sources(
         name=voice_name,

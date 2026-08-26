@@ -75,6 +75,18 @@ Worker setup:
 scripts/run_supabase_worker.sh
 ```
 
+For the one-click RVC training task, install a compatible trainer on the
+worker and set its executable path before starting the worker:
+
+```bash
+export RVC_TRAINER=/absolute/path/to/rvc-train
+export RVC_TRAIN_EPOCHS=300
+scripts/run_supabase_worker.sh
+```
+
+The Vercel page queues this job; training runs on the local/GPU worker because
+Vercel functions are not suitable for long-running model training.
+
 ## RVC Pro-Match Models
 
 The WORLD/DSP profile is a fallback and cannot provide near-indistinguishable

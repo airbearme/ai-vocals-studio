@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     const files = Array.isArray(body.files) ? body.files : [];
     const text = String(body.text || "").trim();
     const taskMode = String(body.taskMode || "voiceover");
-    const supportedTasks = new Set(["voiceover", "song_replace", "clip_convert"]);
+    const supportedTasks = new Set(["voiceover", "song_replace", "clip_convert", "rvc_train"]);
     if (!supportedTasks.has(taskMode)) return sendJson(res, 400, { ok: false, error: "Unsupported worker task mode." });
     const qualityTarget = String(body.qualityTarget || (body.studioQuality === false ? "draft" : "pro"));
     const allowedQualityTargets = new Set(["draft", "studio", "pro"]);
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     if (!body.permission) return sendJson(res, 400, { ok: false, error: "Permission confirmation is required." });
     if (!files.length) return sendJson(res, 400, { ok: false, error: "Upload at least one voice sample." });
     if (taskMode === "voiceover" && !text) return sendJson(res, 400, { ok: false, error: "Voice-over text is required." });
-    if (taskMode !== "voiceover" && !body.targetFile?.data) {
+    if (!["voiceover", "rvc_train"].includes(taskMode) && !body.targetFile?.data) {
       return sendJson(res, 400, { ok: false, error: "Target song/audio is required for replacement jobs." });
     }
 
@@ -95,7 +95,7 @@ export default async function handler(req, res) {
       });
     }
     let storedTarget = null;
-    if (taskMode !== "voiceover") {
+    if (!["voiceover", "rvc_train"].includes(taskMode)) {
       const target = body.targetFile;
       const safeName = cleanName(target.name || "target-audio.wav").replace(/\s+/g, "_");
       const path = `${jobPrefix}/target/${Date.now()}-${safeName}`;
@@ -113,7 +113,9 @@ export default async function handler(req, res) {
 
     const job = await createJob({
       status: "queued",
-      job_type: taskMode === "voiceover" ? "local_worker_voiceover" : "local_worker_audio_replace",
+      job_type: taskMode === "voiceover"
+        ? "local_worker_voiceover"
+        : taskMode === "rvc_train" ? "local_worker_rvc_train" : "local_worker_audio_replace",
       voice_name: cleanName(body.voiceName),
       engine: "local best available",
       permission_confirmed: true,
@@ -129,6 +131,9 @@ export default async function handler(req, res) {
         taskMode,
         separation,
         targetFile: storedTarget,
+        trainer: body.trainer || undefined,
+        epochs: Number(body.epochs || 300),
+        voicesDir: "models/voices",
       },
       report: {
         queuedBy: "vercel",
