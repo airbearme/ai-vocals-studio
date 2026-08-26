@@ -63,6 +63,9 @@
       .job { border: 1px solid var(--line); border-radius: 13px; padding: 10px 12px; background: #101411; }
       .job strong { display: block; }
       .job span { color: var(--muted); font-size: 12px; }
+      .capabilities { display: grid; gap: 6px; margin-top: 10px; }
+      .capability { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding: 7px 0; }
+      .capability:last-child { border-bottom: 0; }
       @media (max-width: 860px) { .hero, .grid, .row { grid-template-columns: 1fr; } }
     </style>
   </head>
@@ -200,6 +203,7 @@
           <h3>Recent jobs</h3>
           <div id="supabaseStatus" class="small">Checking storage...</div>
           <div id="storageHealth" class="small">Checking storage health...</div>
+          <div id="capabilities" class="capabilities small">Checking engines...</div>
           <div id="jobs" class="jobs"></div>
         </aside>
       </section>
@@ -335,6 +339,10 @@
         const healthEl = document.getElementById("storageHealth");
         const jobsEl = document.getElementById("jobs");
         try {
+          const capabilitiesResponse = await fetch("/api/capabilities");
+          const capabilities = await capabilitiesResponse.json();
+          const capabilityItems = [...(capabilities.hosted || []), ...(capabilities.worker || [])];
+          document.getElementById("capabilities").innerHTML = `<strong>Engine stack</strong>${capabilityItems.map((item) => `<div class="capability"><span>${item.name}</span><span>${item.available === false ? "not configured" : item.mode}</span></div>`).join("")}`;
           const healthResponse = await fetch("/api/storage-health");
           const health = await healthResponse.json();
           if (health.ok) {
@@ -350,7 +358,11 @@
           status.textContent = payload.warning ? `${providerText} Job history warning: ${payload.warning}` : providerText;
           jobsEl.innerHTML = (payload.jobs || []).map((job) => {
             const link = job.output_url ? `<a class="link" href="${job.output_url}" target="_blank" rel="noreferrer">Open stored audio</a>` : "";
-            return `<div class="job"><strong>${job.voice_name || "Voice-over"} · ${job.status}</strong><span>${new Date(job.created_at).toLocaleString()} · ${job.engine || "unknown"}</span>${link}</div>`;
+            const report = job.report || {};
+            const stage = report.stage || report.quality_target || "queued";
+            const model = report.model_url || report.model_object;
+            const modelLink = model && /^https?:\\/\\//.test(model) ? `<a class="link" href="${model}" target="_blank" rel="noreferrer">Open trained model</a>` : "";
+            return `<div class="job"><strong>${job.voice_name || "Voice-over"} · ${job.status}</strong><span>${new Date(job.created_at).toLocaleString()} · ${job.engine || "unknown"} · stage: ${stage}</span>${link}${modelLink}</div>`;
           }).join("") || "<p class=\"small\">No jobs yet.</p>";
         } catch (err) {
           status.textContent = `Could not load jobs: ${err.message || err}`;
