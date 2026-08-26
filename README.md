@@ -75,6 +75,36 @@ Worker setup:
 scripts/run_supabase_worker.sh
 ```
 
+## RVC Pro-Match Models
+
+The WORLD/DSP profile is a fallback and cannot provide near-indistinguishable
+voice replacement. Pro-match requires a real, authorized RVC model plus the
+RVC inference sidecar. Validate a clean dataset before training:
+
+```bash
+venv/bin/python rvc_training_cli.py \
+  --voice-dir models/voices/my_authorized_voice \
+  --dataset /path/to/clean-vocals \
+  --i-have-permission
+```
+
+The command expects an installed trainer named `rvc-train` with `--dataset`,
+`--output`, and `--epochs` options. To register a model trained by another
+authorized RVC tool:
+
+```bash
+venv/bin/python rvc_training_cli.py \
+  --voice-dir models/voices/my_authorized_voice \
+  --model /path/to/model.pth \
+  --index /path/to/model.index \
+  --i-have-permission
+```
+
+The importer rejects undersized or invalid artifacts, writes
+`rvc_training_report.json` when validating data, and updates the voice profile
+so the conversion planner can select RVC. Pro-match stops if RVC is not
+actually available; it does not silently return a weaker DSP clone.
+
 Local fallback setup:
 
 ```bash
